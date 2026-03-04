@@ -2,15 +2,28 @@ name: Juejin Auto Sign - Selenium版
 
 on:
   schedule:
-    # 每天北京时间6点到7点之间随机时间执行
-    # 对应UTC时间是22点到23点
-    - cron: '0 22 * * *'  # 每天UTC时间22:00触发，但在Actions中会排队随机执行
-  workflow_dispatch:      # 允许手动触发
+    # 每5分钟一个触发点，覆盖6:00-7:00
+    - cron: '2 22 * * *'   # 6:00
+    - cron: '5 22 * * *'   # 6:05
+    - cron: '12 22 * * *'  # 6:10
+    - cron: '15 22 * * *'  # 6:15
+    - cron: '21 22 * * *'  # 6:20
+    - cron: '26 22 * * *'  # 6:25
+    - cron: '32 22 * * *'  # 6:30
+    - cron: '36 22 * * *'  # 6:35
+    - cron: '42 22 * * *'  # 6:40
+    - cron: '47 22 * * *'  # 6:45
+    - cron: '51 22 * * *'  # 6:50
+    - cron: '56 22 * * *'  # 6:55
+  workflow_dispatch:
 
 jobs:
   sign:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
     
     steps:
     - name: 检出代码
