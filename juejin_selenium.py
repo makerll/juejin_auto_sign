@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-掘金社区自动签到脚本 - Selenium 完整修复版
+掘金社区自动签到脚本 - Selenium 最终修复版
 每天先点击签到，再去抽免费抽奖1次
-修复了签到成功但数据未更新的问题
+修复了页面加载不完整和数据提取失败的问题
 """
 import os
 import time
@@ -122,8 +122,8 @@ def add_cookies_to_driver(driver, cookie_str):
     driver.refresh()
     time.sleep(3)
 
-def get_user_stats(driver):
-    """获取用户统计信息：连续签到天数、累计签到天数、矿石总数"""
+def get_user_stats(driver, retry_count=0):
+    """获取用户统计信息：连续签到天数、累计签到天数、矿石总数（带重试机制）"""
     stats = {'连续签到': '0', '累计签到': '0', '矿石总数': '0', '今日获得': '0'}
 
     try:
@@ -139,7 +139,6 @@ def get_user_stats(driver):
             match = re.search(r'(\d+)[^\d]*连续', page_text)
         if match:
             stats['连续签到'] = match.group(1)
-            print(f"匹配到连续签到: {stats['连续签到']}")
 
         # 累计签到
         match = re.search(r'(\d+)\s*(?:天)?\s*累计签到天数', page_text)
@@ -147,18 +146,28 @@ def get_user_stats(driver):
             match = re.search(r'(\d+)[^\d]*累计', page_text)
         if match:
             stats['累计签到'] = match.group(1)
-            print(f"匹配到累计签到: {stats['累计签到']}")
 
-        # 矿石总数
+        # 矿石总数 - 排除年份数字（如2026）
         ore_matches = re.findall(r'(\d{4,7})\s*矿石', page_text)
         if ore_matches:
             stats['矿石总数'] = ore_matches[0]
-            print(f"匹配到矿石总数: {stats['矿石总数']}")
         else:
             all_numbers = re.findall(r'\b(\d{4,7})\b', page_text)
-            if all_numbers:
+            # 过滤掉可能的年份（2026-2030）
+            valid_ores = [n for n in all_numbers if not (2020 <= int(n) <= 2030)]
+            if valid_ores:
+                stats['矿石总数'] = max(valid_ores, key=int)
+            elif all_numbers:
+                # 如果没有有效矿石数，取最大数字（可能是年份）
                 stats['矿石总数'] = max(all_numbers, key=int)
-                print(f"取最大数字作为矿石总数: {stats['矿石总数']}")
+        
+        # 数据验证：如果连续签到为0但应该有值，说明页面未加载完整
+        if stats['连续签到'] == '0' and '立即签到' in page_text and retry_count < 3:
+            print(f"⚠️ 数据异常：连续签到位0，但存在签到按钮，等待后重试 ({retry_count + 1}/3)...")
+            time.sleep(3)
+            driver.refresh()
+            time.sleep(3)
+            return get_user_stats(driver, retry_count + 1)
 
     except Exception as e:
         print(f"获取用户统计信息时出错: {e}")
@@ -220,41 +229,21 @@ def check_sign_success(driver):
         signed_elements = driver.find_elements(By.XPATH, '//*[contains(text(), "今日已签到")]')
         for element in signed_elements:
             if element.is_displayed():
+                print("检测到'今日已签到'标签")
                 return True
         
         # 检查签到按钮是否消失或变灰
         buttons = driver.find_elements(By.XPATH, '//button[contains(text(), "立即签到")]')
         if not buttons or not buttons[0].is_displayed():
+            print("签到按钮已消失")
             return True
             
         return False
     except:
         return False
 
-def extract_sign_reward(page_text):
-    """提取签到奖励数字"""
-    # 方法1：找今日区域
-    today_index = page_text.find('今日')
-    if today_index != -1:
-        today_section = page_text[today_index:today_index+200]
-        plus_match = re.search(r'\+(\d+)', today_section)
-        if plus_match:
-            return f"获得 {plus_match.group(1)} 矿石"
-    
-    # 方法2：找+号数字
-    plus_matches = re.findall(r'\+(\d+)', page_text)
-    if plus_matches:
-        return f"获得 {plus_matches[0]} 矿石"
-    
-    # 方法3：找"获得"关键词
-    reward_match = re.search(r'获得[^\d]*(\d+)[^\d]*矿石', page_text)
-    if reward_match:
-        return f"获得 {reward_match.group(1)} 矿石"
-    
-    return "签到成功"
-
 def perform_sign(driver, sign_button):
-    """执行签到操作 - 处理弹窗版"""
+    """执行签到操作 - 改进弹窗检测"""
     try:
         if not sign_button:
             return False, "未找到签到按钮"
@@ -263,63 +252,64 @@ def perform_sign(driver, sign_button):
         driver.execute_script("arguments[0].scrollIntoView(true);", sign_button)
         time.sleep(1)
 
-        # 方法1：常规点击
+        # 点击签到
         try:
             sign_button.click()
             print("使用常规点击")
         except:
-            # 方法2：JavaScript点击
             try:
                 driver.execute_script("arguments[0].click();", sign_button)
                 print("使用JavaScript点击")
             except:
-                # 方法3：ActionChains点击
                 actions = ActionChains(driver)
                 actions.move_to_element(sign_button).click().perform()
                 print("使用ActionChains点击")
 
         print("已点击签到按钮")
-        time.sleep(3)  # 等待弹窗出现
+        time.sleep(3)
 
-        # === 处理签到成功弹窗 ===
+        # === 改进：只检测真正的签到成功弹窗 ===
         reward = "签到成功"
         try:
-            # 查找弹窗中的文本
-            popup_elements = driver.find_elements(By.XPATH, '//*[contains(text(), "签到成功") or contains(text(), "获得") or contains(text(), "矿石")]')
+            # 查找包含"签到成功"或"获得"的弹窗
+            popup_elements = driver.find_elements(By.XPATH, 
+                '//*[contains(text(), "签到成功") or contains(text(), "获得") and contains(text(), "矿石")]')
+            
             for element in popup_elements:
                 if element.is_displayed():
                     popup_text = element.text
-                    print(f"检测到弹窗: {popup_text}")
+                    print(f"检测到签到弹窗: {popup_text}")
                     
-                    # 提取矿石数量
                     ore_match = re.search(r'(\d+)', popup_text)
                     if ore_match:
                         reward = f"获得 {ore_match.group(1)} 矿石"
                         break
             
-            # 尝试关闭弹窗（点击页面空白处）
+            # 尝试关闭弹窗（点击空白处）
             try:
                 actions = ActionChains(driver)
                 actions.move_by_offset(100, 100).click().perform()
-                actions.move_to_element(sign_button).perform()  # 移回原位
+                actions.move_to_element(sign_button).perform()
                 print("尝试关闭弹窗")
                 time.sleep(1)
             except:
                 pass
                 
         except Exception as e:
-            print(f"处理弹窗时出错: {e}")
-            # 如果没有弹窗，从页面文本提取
-            page_text = driver.find_element(By.TAG_NAME, 'body').text
-            reward = extract_sign_reward(page_text)
+            print(f"弹窗检测跳过: {e}")
 
         # 验证签到是否成功
         if check_sign_success(driver):
             print("✅ 签到验证成功")
             return True, reward
         else:
-            print("⚠️ 签到后状态验证失败")
-            return False, "签到后状态未改变"
+            print("⚠️ 签到后状态验证失败，等待2秒重试...")
+            time.sleep(2)
+            if check_sign_success(driver):
+                print("✅ 第二次验证成功")
+                return True, reward
+            else:
+                return False, "签到后状态未改变"
 
     except Exception as e:
         print(f"执行签到异常: {e}")
@@ -850,13 +840,19 @@ def main():
         driver.get(USER_PAGE_URL)
         time.sleep(5)
 
+        # 等待页面完全加载
+        print("等待页面加载...")
+        try:
+            wait = WebDriverWait(driver, 10)
+            wait.until(EC.presence_of_element_located((By.XPATH, '//*[contains(text(), "连续签到天数")]')))
+            print("页面加载完成")
+        except TimeoutException:
+            print("页面加载超时，继续执行")
+
         # 获取签到前的初始数据
         print("正在获取签到前用户统计信息...")
         initial_stats = get_user_stats(driver)
         print(f"签到前统计: {initial_stats}")
-        
-        # 保存初始矿石数用于计算增量
-        initial_ore = int(initial_stats['矿石总数'])
 
         # 检查签到状态
         is_signed, sign_button = check_sign_status(driver)
@@ -868,7 +864,7 @@ def main():
             sign_success, sign_reward = perform_sign(driver, sign_button)
 
             if sign_success:
-                # === 修复：从签到奖励中提取数字 ===
+                # === 从签到奖励中提取数字 ===
                 sign_ore = 0
                 if "获得" in sign_reward:
                     reward_numbers = re.findall(r'\d+', sign_reward)
@@ -885,11 +881,6 @@ def main():
                         sign_ore = int(plus_matches[0])
                         user_stats['今日获得'] = str(sign_ore)
                         print(f"今日签到获得(从+号提取): {sign_ore} 矿石")
-                    else:
-                        # 如果还提取不到，尝试从你的截图知道今天固定值（可选）
-                        sign_ore = 700  # 根据当天实际情况可能需要调整
-                        user_stats['今日获得'] = str(sign_ore)
-                        print(f"今日签到获得(使用默认值): {sign_ore} 矿石")
 
                 sign_status = "签到成功"
                 sign_detail = sign_reward
@@ -899,13 +890,6 @@ def main():
                 time.sleep(2)
                 verify_stats = get_user_stats(driver)
                 print(f"签到后验证统计: {verify_stats}")
-                
-                if verify_stats['连续签到'] == initial_stats['连续签到']:
-                    print("⚠️ 警告：签到后数据未变化，刷新页面重试")
-                    driver.refresh()
-                    time.sleep(3)
-                    verify_stats = get_user_stats(driver)
-                    print(f"刷新后统计: {verify_stats}")
 
                 # 签到成功 → 去抽奖
                 print("\n=== 签到完成，开始执行抽奖 ===")
