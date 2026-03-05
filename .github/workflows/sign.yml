@@ -3,14 +3,15 @@ name: Juejin Auto Sign - Selenium版
 on:
   schedule:
     # 每5分钟一个触发点，覆盖6:00-7:00
-    - cron: '15 22 * * *'  # 6:15
+    - cron: '10 22 * * *'  # 6:10
    
   workflow_dispatch:
 
 jobs:
   sign:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 【关键】设置为 40 分钟：30分钟最大等待 + 10分钟执行缓冲
+    timeout-minutes: 40
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
