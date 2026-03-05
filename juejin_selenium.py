@@ -826,6 +826,30 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
 
 def main():
     """主函数"""
+    # ================= 随机等待逻辑 (1-10 分钟) =================
+    # 生成 1 到 10 之间的随机整数
+    wait_minutes = random.randint(1, 10)
+    wait_seconds = wait_minutes * 60
+    
+    start_time = time.strftime("%H:%M:%S")
+    end_time_obj = time.time() + wait_seconds
+    end_time_str = time.strftime("%H:%M:%S", time.localtime(end_time_obj))
+    
+    print(f"🤖 [Juejin Bot] 任务已启动: {start_time}")
+    print(f"🎲 [随机策略] 生成随机等待时间: {wait_minutes} 分钟")
+    print(f"⏳ [预计执行] 将在约 {end_time_str} 开始签到...")
+    print("-" * 30)
+    
+    # 执行等待
+    # 注意：GitHub Actions 日志在 sleep 期间不会更新，这是正常的
+    time.sleep(wait_seconds)
+    
+    print("-" * 30)
+    print(f"✅ [唤醒] 等待结束，当前时间: {time.strftime('%H:%M:%S')}")
+    print("🚀 开始执行签到逻辑...")
+    # =========================================================
+
+    # --- 下面是你原本的签到逻辑 ---
     start_time = format_china_time()
     print(f"[{start_time}] 开始执行掘金签到 (Selenium版)")
 
@@ -1005,3 +1029,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
