@@ -11,7 +11,7 @@ jobs:
   sign:
     runs-on: ubuntu-latest
     # 【关键】设置为 40 分钟：30分钟最大等待 + 10分钟执行缓冲
-    timeout-minutes: 40
+    timeout-minutes: 20
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
