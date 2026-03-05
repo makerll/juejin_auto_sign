@@ -3,7 +3,7 @@
 """
 掘金社区自动签到脚本 - Selenium 最终修复版
 每天先点击签到，再去抽免费抽奖1次
-修复了页面加载不完整和数据提取失败的问题
+修复了页面异步加载导致数据读取失败的问题
 """
 import os
 import time
@@ -122,11 +122,31 @@ def add_cookies_to_driver(driver, cookie_str):
     driver.refresh()
     time.sleep(3)
 
+def wait_for_user_data(driver, timeout=15):
+    """等待用户数据加载完成"""
+    try:
+        print("等待用户数据加载...")
+        wait = WebDriverWait(driver, timeout)
+        
+        # 等待连续签到天数出现且包含数字
+        wait.until(lambda d: (
+            len(d.find_elements(By.XPATH, '//*[contains(text(), "连续签到天数")]')) > 0 and
+            any(char.isdigit() for char in d.find_element(By.TAG_NAME, 'body').text)
+        ))
+        print("用户数据加载完成")
+        return True
+    except TimeoutException:
+        print("用户数据加载超时")
+        return False
+
 def get_user_stats(driver, retry_count=0):
-    """获取用户统计信息：连续签到天数、累计签到天数、矿石总数（带重试机制）"""
+    """获取用户统计信息：连续签到天数、累计签到天数、矿石总数"""
     stats = {'连续签到': '0', '累计签到': '0', '矿石总数': '0', '今日获得': '0'}
 
     try:
+        # 等待数据加载
+        wait_for_user_data(driver)
+        
         # 获取页面所有可见文本
         page_text = driver.find_element(By.TAG_NAME, 'body').text
         print("====== 页面文本分析 ======")
@@ -157,9 +177,6 @@ def get_user_stats(driver, retry_count=0):
             valid_ores = [n for n in all_numbers if not (2020 <= int(n) <= 2030)]
             if valid_ores:
                 stats['矿石总数'] = max(valid_ores, key=int)
-            elif all_numbers:
-                # 如果没有有效矿石数，取最大数字（可能是年份）
-                stats['矿石总数'] = max(all_numbers, key=int)
         
         # 数据验证：如果连续签到为0但应该有值，说明页面未加载完整
         if stats['连续签到'] == '0' and '立即签到' in page_text and retry_count < 3:
@@ -268,7 +285,7 @@ def perform_sign(driver, sign_button):
         print("已点击签到按钮")
         time.sleep(3)
 
-        # === 改进：只检测真正的签到成功弹窗 ===
+        # === 检测真正的签到成功弹窗 ===
         reward = "签到成功"
         try:
             # 查找包含"签到成功"或"获得"的弹窗
@@ -838,16 +855,18 @@ def main():
         # 进入签到页面
         print(f"正在访问签到页面: {USER_PAGE_URL}")
         driver.get(USER_PAGE_URL)
-        time.sleep(5)
-
-        # 等待页面完全加载
-        print("等待页面加载...")
-        try:
-            wait = WebDriverWait(driver, 10)
-            wait.until(EC.presence_of_element_located((By.XPATH, '//*[contains(text(), "连续签到天数")]')))
-            print("页面加载完成")
-        except TimeoutException:
-            print("页面加载超时，继续执行")
+        
+        # ===== 等待页面完全加载 =====
+        print("等待页面完全加载...")
+        time.sleep(5)  # 给初始加载时间
+        
+        # 滚动页面触发异步加载
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)
+        
+        # 等待用户数据加载
+        wait_for_user_data(driver)
+        # ===========================
 
         # 获取签到前的初始数据
         print("正在获取签到前用户统计信息...")
