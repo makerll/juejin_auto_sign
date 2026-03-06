@@ -4,6 +4,7 @@
 掘金社区自动签到脚本 - Selenium 最终修复版
 每天先点击签到，再去抽免费抽奖1次
 修复了页面异步加载导致数据读取失败的问题
+增加Cookie过期检测和邮件通知
 """
 import os
 import time
@@ -121,6 +122,169 @@ def add_cookies_to_driver(driver, cookie_str):
     print(f"已添加 {len(cookies)} 个cookie")
     driver.refresh()
     time.sleep(3)
+
+def verify_login_status(driver):
+    """验证是否成功登录"""
+    try:
+        time.sleep(3)
+        page_text = driver.find_element(By.TAG_NAME, 'body').text
+        page_title = driver.title
+        
+        print(f"页面标题: {page_title}")
+        print(f"页面文本前200字符: {page_text[:200]}")
+        
+        # 检查是否出现403错误
+        if '403' in page_text or 'denied' in page_text.lower() or 'forbidden' in page_text.lower():
+            print("❌ 访问被拒绝（403），Cookie可能过期")
+            return False, "cookie_expired_403"
+        
+        # 检查是否出现登录相关提示
+        if ('登录' in page_text and '注册' in page_text) or 'signin' in page_url:
+            print("❌ Cookie无效，页面显示登录界面")
+            return False, "cookie_invalid_login"
+        
+        # 检查是否出现用户标识（根据你的截图，有"难为清醒"用户名）
+        if '难为清醒' in page_text or 'JY.6' in page_text:
+            print("✅ 登录验证成功")
+            return True, "success"
+        
+        # 检查是否还有签到按钮（说明已登录但未签到）
+        if '立即签到' in page_text or '签到' in page_text:
+            print("✅ 已登录，可以签到")
+            return True, "success"
+            
+        return False, "unknown_error"
+        
+    except Exception as e:
+        print(f"验证登录状态时出错: {e}")
+        return False, f"verification_error:{str(e)}"
+
+def send_cookie_expired_email():
+    """发送Cookie过期通知邮件"""
+    try:
+        current_time = format_china_time()
+        subject = "⚠️ 掘金签到 Cookie 已过期"
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{
+                    font-family: 'Microsoft YaHei', sans-serif;
+                    padding: 20px;
+                    background-color: #f0f2f5;
+                }}
+                .container {{
+                    max-width: 500px;
+                    margin: 0 auto;
+                    background: #ffffff;
+                    border-radius: 16px;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+                    overflow: hidden;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, #ef4444, #dc2626);
+                    color: white;
+                    padding: 24px;
+                    text-align: center;
+                }}
+                .header h1 {{
+                    margin: 0;
+                    font-size: 24px;
+                }}
+                .content {{
+                    padding: 24px;
+                }}
+                .warning-icon {{
+                    font-size: 48px;
+                    text-align: center;
+                    margin-bottom: 20px;
+                }}
+                .message {{
+                    background: #fef2f2;
+                    border-left: 4px solid #ef4444;
+                    padding: 16px;
+                    margin-bottom: 20px;
+                    border-radius: 8px;
+                }}
+                .message p {{
+                    margin: 8px 0;
+                    color: #1e293b;
+                }}
+                .time {{
+                    color: #64748b;
+                    font-size: 14px;
+                    text-align: center;
+                    margin-top: 20px;
+                }}
+                .footer {{
+                    background: #f8fafc;
+                    padding: 16px;
+                    text-align: center;
+                    color: #64748b;
+                    font-size: 12px;
+                    border-top: 1px solid #e2e8f0;
+                }}
+                .btn {{
+                    display: inline-block;
+                    background: #3b82f6;
+                    color: white;
+                    text-decoration: none;
+                    padding: 10px 20px;
+                    border-radius: 8px;
+                    margin-top: 16px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>⛏️ 掘金签到</h1>
+                </div>
+                <div class="content">
+                    <div class="warning-icon">⚠️</div>
+                    <div class="message">
+                        <p><strong>Cookie 已过期</strong></p>
+                        <p>自动签到脚本无法登录掘金，因为存储的 Cookie 已经失效。</p>
+                        <p>请按照以下步骤更新 Cookie：</p>
+                        <ol style="margin-top: 8px; padding-left: 20px;">
+                            <li>打开浏览器无痕模式访问 <a href="https://juejin.cn/">https://juejin.cn/</a></li>
+                            <li>登录你的掘金账号</li>
+                            <li>按 F12 打开开发者工具 → Network 标签</li>
+                            <li>刷新页面，找到任意请求（如 home）</li>
+                            <li>复制请求头中的完整 Cookie 值</li>
+                            <li>更新 GitHub Secrets 中的 <code>JUEJIN_COOKIE</code></li>
+                        </ol>
+                    </div>
+                    <p class="time">⏱️ 检测时间：{current_time}</p>
+                </div>
+                <div class="footer">
+                    <p>🤖 此邮件由自动签到系统发送</p>
+                    <p>请及时更新 Cookie 以恢复自动签到</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_FROM
+        msg['To'] = EMAIL_TO
+        msg['Subject'] = subject
+        msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+        
+        context = ssl.create_default_context()
+        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context, timeout=30)
+        server.login(EMAIL_FROM, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
+        server.quit()
+        print("✅ Cookie过期通知邮件发送成功")
+        return True
+    except Exception as e:
+        print(f"❌ Cookie过期邮件发送失败: {e}")
+        return False
 
 def wait_for_user_data(driver, timeout=15):
     """等待用户数据加载完成"""
@@ -260,7 +424,7 @@ def check_sign_success(driver):
         return False
 
 def perform_sign(driver, sign_button):
-    """执行签到操作 - 改进弹窗检测"""
+    """执行签到操作 - 增加弹窗等待"""
     try:
         if not sign_button:
             return False, "未找到签到按钮"
@@ -283,7 +447,21 @@ def perform_sign(driver, sign_button):
                 print("使用ActionChains点击")
 
         print("已点击签到按钮")
-        time.sleep(3)
+        
+        # ===== 增加弹窗等待 =====
+        print("等待签到弹窗出现...")
+        time.sleep(5)  # 等待弹窗完全加载
+        
+        # 等待"去抽奖"按钮出现
+        try:
+            wait = WebDriverWait(driver, 10)
+            lottery_btn = wait.until(EC.presence_of_element_located(
+                (By.XPATH, '//*[contains(text(), "去抽奖") or contains(text(), "免费抽奖")]'
+            )))
+            print(f"检测到抽奖按钮: {lottery_btn.text}")
+        except TimeoutException:
+            print("未检测到抽奖按钮，可能弹窗已关闭")
+        # =======================
 
         # === 检测真正的签到成功弹窗 ===
         reward = "签到成功"
@@ -841,7 +1019,6 @@ def main():
     print("-" * 30)
     
     # 执行等待
-    # 注意：GitHub Actions 日志在 sleep 期间不会更新，这是正常的
     time.sleep(wait_seconds)
     
     print("-" * 30)
@@ -849,7 +1026,7 @@ def main():
     print("🚀 开始执行签到逻辑...")
     # =========================================================
 
-    # --- 下面是你原本的签到逻辑 ---
+    # 开始执行签到逻辑
     start_time = format_china_time()
     print(f"[{start_time}] 开始执行掘金签到 (Selenium版)")
 
@@ -875,6 +1052,16 @@ def main():
         # 添加Cookie
         print("正在添加Cookie...")
         add_cookies_to_driver(driver, COOKIE)
+        
+        # ===== 验证登录状态 =====
+        login_valid, login_status = verify_login_status(driver)
+        if not login_valid:
+            print("❌ Cookie无效或已过期")
+            # 发送Cookie过期通知邮件
+            send_cookie_expired_email()
+            sign_detail = f"Cookie已过期: {login_status}"
+            raise Exception(f"Cookie invalid: {login_status}")
+        # =======================
 
         # 进入签到页面
         print(f"正在访问签到页面: {USER_PAGE_URL}")
@@ -1029,4 +1216,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
