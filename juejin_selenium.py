@@ -299,7 +299,7 @@ def send_cookie_expired_email():
         print(f"❌ Cookie过期邮件发送失败: {e}")
         return False
 
-def wait_for_user_data(driver, timeout=15):
+def wait_for_user_data(driver, timeout=30):  # 从15秒增加到30秒
     """等待用户数据加载完成"""
     try:
         print("等待用户数据加载...")
@@ -321,46 +321,60 @@ def get_user_stats(driver, retry_count=0):
     stats = {'连续签到': '0', '累计签到': '0', '矿石总数': '0', '今日获得': '0'}
 
     try:
-        # 等待数据加载
-        wait_for_user_data(driver)
+        # 增加初始等待时间
+        time.sleep(3)
         
-        # 获取页面所有可见文本
-        page_text = driver.find_element(By.TAG_NAME, 'body').text
-        print("====== 页面文本分析 ======")
-        print(page_text[:500])
-        print("=========================")
+        # 多次尝试获取数据
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            # 获取页面所有可见文本
+            page_text = driver.find_element(By.TAG_NAME, 'body').text
+            print(f"====== 页面文本分析 (尝试 {attempt + 1}/{max_attempts}) ======")
+            print(page_text[:500])
+            print("=========================")
 
-        # 连续签到
-        match = re.search(r'(\d+)\s*(?:天)?\s*连续签到天数', page_text)
-        if not match:
-            match = re.search(r'(\d+)[^\d]*连续', page_text)
-        if match:
-            stats['连续签到'] = match.group(1)
+            # 连续签到
+            match = re.search(r'(\d+)\s*(?:天)?\s*连续签到天数', page_text)
+            if not match:
+                match = re.search(r'(\d+)[^\d]*连续', page_text)
+            if match:
+                stats['连续签到'] = match.group(1)
 
-        # 累计签到
-        match = re.search(r'(\d+)\s*(?:天)?\s*累计签到天数', page_text)
-        if not match:
-            match = re.search(r'(\d+)[^\d]*累计', page_text)
-        if match:
-            stats['累计签到'] = match.group(1)
+            # 累计签到
+            match = re.search(r'(\d+)\s*(?:天)?\s*累计签到天数', page_text)
+            if not match:
+                match = re.search(r'(\d+)[^\d]*累计', page_text)
+            if match:
+                stats['累计签到'] = match.group(1)
 
-        # 矿石总数 - 排除年份数字（如2026）
-        ore_matches = re.findall(r'(\d{4,7})\s*矿石', page_text)
-        if ore_matches:
-            stats['矿石总数'] = ore_matches[0]
-        else:
-            all_numbers = re.findall(r'\b(\d{4,7})\b', page_text)
-            # 过滤掉可能的年份（2026-2030）
-            valid_ores = [n for n in all_numbers if not (2020 <= int(n) <= 2030)]
-            if valid_ores:
-                stats['矿石总数'] = max(valid_ores, key=int)
+            # 矿石总数
+            ore_matches = re.findall(r'(\d{4,7})\s*矿石', page_text)
+            if ore_matches:
+                stats['矿石总数'] = ore_matches[0]
+            else:
+                all_numbers = re.findall(r'\b(\d{4,7})\b', page_text)
+                # 过滤掉可能的年份（2026-2030）
+                valid_ores = [n for n in all_numbers if not (2020 <= int(n) <= 2030)]
+                if valid_ores:
+                    stats['矿石总数'] = max(valid_ores, key=int)
+            
+            # 检查是否成功获取到数据
+            if stats['连续签到'] != '0' and stats['累计签到'] != '0' and stats['矿石总数'] != '0':
+                print(f"✅ 第{attempt + 1}次尝试成功获取数据")
+                break
+            else:
+                print(f"⚠️ 第{attempt + 1}次尝试数据不全，等待后重试...")
+                time.sleep(3)
+                # 滚动页面触发加载
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2)
         
         # 数据验证：如果连续签到为0但应该有值，说明页面未加载完整
         if stats['连续签到'] == '0' and '立即签到' in page_text and retry_count < 3:
-            print(f"⚠️ 数据异常：连续签到位0，但存在签到按钮，等待后重试 ({retry_count + 1}/3)...")
+            print(f"⚠️ 数据异常：连续签到位0，但存在签到按钮，刷新页面重试 ({retry_count + 1}/3)...")
             time.sleep(3)
             driver.refresh()
-            time.sleep(3)
+            time.sleep(5)
             return get_user_stats(driver, retry_count + 1)
 
     except Exception as e:
@@ -1080,17 +1094,19 @@ def main():
         print(f"正在访问签到页面: {USER_PAGE_URL}")
         driver.get(USER_PAGE_URL)
         
-        # ===== 等待页面完全加载 =====
+        # ===== 增强的等待逻辑 =====
         print("等待页面完全加载...")
-        time.sleep(5)  # 给初始加载时间
+        time.sleep(5)
         
-        # 滚动页面触发异步加载
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(2)
+        # 多次滚动触发加载
+        for i in range(3):
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            print(f"第{i+1}次滚动触发加载")
+            time.sleep(3)
         
         # 等待用户数据加载
-        wait_for_user_data(driver)
-        # ===========================
+        wait_for_user_data(driver, timeout=30)
+        # =========================
 
         # 获取签到前的初始数据
         print("正在获取签到前用户统计信息...")
@@ -1229,4 +1245,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
