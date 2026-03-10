@@ -737,9 +737,9 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             <div class="header">
                 <div class="title-row">
                     <span class="title">⛏️ 掘金签到</span>
-                    <span class="time-badge">{current_time_only}</span>
+                    <span class="time-badge">Selenium</span>
                 </div>
-                <div class="date-row">{current_date}</div>
+                <div class="date-row">⏱️ 执行时间：{current_time}</div>
             </div>
             
             <!-- 统计网格 - 12px圆角卡片 -->
@@ -791,7 +791,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             
             <!-- 底部 -->
             <div class="footer">
-                ⏱️ 执行时间：{current_time}
+                ⚡每日自动执行 · 结果实时推送⚡
             </div>
         </div>
     </body>
@@ -911,6 +911,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
