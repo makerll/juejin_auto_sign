@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-掘金社区自动签到脚本 - 混合模式
+掘金社区自动签到脚本 - 混合模式修复版
 先用Selenium模拟用户真实操作（访问首页、沸点）
-再调用API接口实现签到和抽奖
+再用最新Cookie调用API接口实现签到和抽奖
 """
 import os
 import time
@@ -146,6 +146,27 @@ def add_cookies_to_driver(driver, cookie_str):
     time.sleep(3)
     return success_count > 0
 
+def get_fresh_cookies_from_driver(driver):
+    """从Selenium获取最新的Cookie字符串"""
+    selenium_cookies = driver.get_cookies()
+    cookie_dict = {}
+    for cookie in selenium_cookies:
+        cookie_dict[cookie['name']] = cookie['value']
+    
+    # 重新构造Cookie字符串
+    cookie_parts = []
+    for name, value in cookie_dict.items():
+        cookie_parts.append(f"{name}={value}")
+    
+    cookie_str = '; '.join(cookie_parts)
+    print(f"📦 从浏览器获取到 {len(cookie_parts)} 个最新Cookie")
+    return cookie_str
+
+def extract_csrf_token(cookie_str):
+    """从Cookie中提取CSRF token"""
+    match = re.search(r'passport_csrf_token=([^;]+)', cookie_str)
+    return match.group(1) if match else None
+
 def simulate_user_behavior(driver):
     """模拟真实用户行为 - 使用Selenium"""
     print("\n🌐 ===== 模拟真实用户行为 ===== ")
@@ -190,18 +211,17 @@ def simulate_user_behavior(driver):
         
         print("✅ 用户行为模拟完成")
         
-        # 获取最新的Cookie用于API请求
-        selenium_cookies = driver.get_cookies()
-        cookie_str = '; '.join([f"{c['name']}={c['value']}" for c in selenium_cookies])
-        
-        return True, cookie_str
+        return True
         
     except Exception as e:
         print(f"❌ 模拟用户行为时出错: {e}")
-        return False, COOKIE  # 返回原始Cookie
+        return False
 
 def make_api_request(session, url, method='GET', data=None, cookie_str=None):
-    """发送API请求"""
+    """发送API请求 - 增强版，检查业务状态码"""
+    # 提取CSRF token
+    csrf_token = extract_csrf_token(cookie_str if cookie_str else COOKIE)
+    
     headers = {
         'Accept': '*/*',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
@@ -218,7 +238,14 @@ def make_api_request(session, url, method='GET', data=None, cookie_str=None):
         'Sec-Fetch-Site': 'same-site',
     }
     
+    # 添加CSRF token（如果存在）
+    if csrf_token:
+        headers['x-secsdk-csrf-token'] = csrf_token
+        headers['X-CSRF-Token'] = csrf_token
+    
     print(f"\n📡 请求: {method} {url}")
+    if csrf_token:
+        print(f"🔑 CSRF Token: {csrf_token[:10]}...")
     
     try:
         if method.upper() == 'GET':
@@ -226,22 +253,27 @@ def make_api_request(session, url, method='GET', data=None, cookie_str=None):
         else:
             response = session.post(url, headers=headers, json=data or {}, timeout=15)
         
-        print(f"📊 状态码: {response.status_code}")
+        print(f"📊 HTTP状态码: {response.status_code}")
         
         if response.status_code == 200:
             try:
                 result = response.json()
-                if result.get('err_no') == 0:
+                # 检查业务状态码
+                err_no = result.get('err_no')
+                if err_no == 0:
                     print(f"✅ API请求成功")
                     return result
+                elif err_no == 403:
+                    print(f"❌ 需要登录: {result.get('err_msg')}")
+                    return None
                 else:
-                    print(f"⚠️ API错误: {result.get('err_msg')}")
+                    print(f"⚠️ API错误: {result.get('err_msg')} (err_no={err_no})")
                     return result
             except:
-                print(f"⚠️ 响应解析失败")
+                print(f"⚠️ 响应解析失败，原始响应: {response.text[:100]}")
                 return None
         else:
-            print(f"❌ 请求失败: {response.status_code}")
+            print(f"❌ HTTP请求失败: {response.status_code}")
             return None
             
     except Exception as e:
@@ -595,7 +627,7 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
                     <span class="date-badge">{current_time}</span>
                 </div>
                 <div class="sub-title">
-                    <span>Selenium+API混合模式</span>
+                    <span>混合模式修复版</span>
                     <span class="dot"></span>
                     <span>首页·沸点·签到·抽奖</span>
                 </div>
@@ -652,7 +684,7 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
             
             <div class="footer">
                 <div class="footer-text">
-                    ⚡ 混合模式 · 稳定可靠 ⚡
+                    ⚡ 修复版 · 稳定可靠 ⚡
                 </div>
             </div>
         </div>
@@ -660,6 +692,115 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
     </html>
     """
     return html
+
+def send_cookie_expired_email():
+    """发送Cookie过期通知邮件"""
+    try:
+        current_time = format_china_time()
+        subject = "⚠️ 掘金签到 Cookie 已过期"
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{
+                    font-family: 'Microsoft YaHei', sans-serif;
+                    padding: 20px;
+                    background-color: #f0f2f5;
+                }}
+                .container {{
+                    max-width: 500px;
+                    margin: 0 auto;
+                    background: #ffffff;
+                    border-radius: 16px;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+                    overflow: hidden;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, #ef4444, #dc2626);
+                    color: white;
+                    padding: 24px;
+                    text-align: center;
+                }}
+                .header h1 {{
+                    margin: 0;
+                    font-size: 24px;
+                }}
+                .content {{
+                    padding: 24px;
+                }}
+                .warning-icon {{
+                    font-size: 48px;
+                    text-align: center;
+                    margin-bottom: 20px;
+                }}
+                .message {{
+                    background: #fef2f2;
+                    border-left: 4px solid #ef4444;
+                    padding: 16px;
+                    margin-bottom: 20px;
+                    border-radius: 8px;
+                }}
+                .message p {{
+                    margin: 8px 0;
+                    color: #1e293b;
+                }}
+                .time {{
+                    color: #64748b;
+                    font-size: 14px;
+                    text-align: center;
+                    margin-top: 20px;
+                }}
+                .footer {{
+                    background: #f8fafc;
+                    padding: 16px;
+                    text-align: center;
+                    color: #64748b;
+                    font-size: 12px;
+                    border-top: 1px solid #e2e8f0;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>⛏️ 掘金签到</h1>
+                </div>
+                <div class="content">
+                    <div class="warning-icon">⚠️</div>
+                    <div class="message">
+                        <p><strong>Cookie 已过期</strong></p>
+                        <p>自动签到脚本无法登录掘金，因为存储的 Cookie 已经失效。</p>
+                        <p>请重新获取 Cookie 并更新 GitHub Secrets 中的 JUEJIN_COOKIE。</p>
+                    </div>
+                    <p class="time">⏱️ 检测时间：{current_time}</p>
+                </div>
+                <div class="footer">
+                    <p>🤖 此邮件由自动签到系统发送</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_FROM
+        msg['To'] = EMAIL_TO
+        msg['Subject'] = subject
+        msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+        
+        context = ssl.create_default_context()
+        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context, timeout=30)
+        server.login(EMAIL_FROM, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
+        server.quit()
+        print("✅ Cookie过期通知邮件发送成功")
+        return True
+    except Exception as e:
+        print(f"❌ Cookie过期邮件发送失败: {e}")
+        return False
 
 def main():
     """主函数"""
@@ -684,7 +825,7 @@ def main():
     # =========================================================
 
     start_time = format_china_time()
-    print(f"[{start_time}] 开始执行掘金签到 (混合模式)")
+    print(f"[{start_time}] 开始执行掘金签到 (混合模式修复版)")
 
     if not check_config():
         return
@@ -705,11 +846,14 @@ def main():
         add_cookies_to_driver(driver, COOKIE)
         
         # 模拟用户行为（访问首页、沸点、随机浏览）
-        success, updated_cookie = simulate_user_behavior(driver)
+        simulate_success = simulate_user_behavior(driver)
         
-        if not success:
-            print("⚠️ 用户行为模拟部分失败，使用原始Cookie继续")
-            updated_cookie = COOKIE
+        if not simulate_success:
+            print("⚠️ 用户行为模拟部分失败，继续使用当前会话")
+        
+        # 从浏览器获取最新的Cookie
+        print("\n🔍 从浏览器获取最新Cookie...")
+        fresh_cookie = get_fresh_cookies_from_driver(driver)
         
         # 关闭浏览器，释放资源
         print("\n🔚 关闭浏览器...")
@@ -719,28 +863,42 @@ def main():
         # 随机延迟，模拟人类操作间隔
         time.sleep(random.uniform(2, 5))
         
-        # ===== 第二步：使用API执行签到和抽奖 =====
+        # ===== 第二步：使用最新Cookie执行API签到和抽奖 =====
         print("\n🚀 ===== 第二阶段：API执行签到抽奖 =====")
         
         # 创建session
         session = requests.Session()
         
+        # 先测试Cookie有效性
+        print("\n🔍 测试Cookie有效性...")
+        test_result = make_api_request(session, GET_USER_INFO_URL, 'GET', cookie_str=fresh_cookie)
+        if not test_result or test_result.get('err_no') != 0:
+            print("❌ Cookie无效或已过期，尝试使用原始Cookie...")
+            test_result = make_api_request(session, GET_USER_INFO_URL, 'GET', cookie_str=COOKIE)
+            if not test_result or test_result.get('err_no') != 0:
+                print("❌ 所有Cookie均无效，发送过期通知")
+                send_cookie_expired_email()
+                return
+            else:
+                fresh_cookie = COOKIE
+                print("✅ 原始Cookie有效，继续使用")
+        
         # 获取用户信息
-        username = get_user_info(session, updated_cookie)
+        username = get_user_info(session, fresh_cookie)
         if username:
             print(f"👋 欢迎 {username}")
         
         # 获取当前矿石数
-        current_points = get_current_points(session, updated_cookie)
+        current_points = get_current_points(session, fresh_cookie)
         user_stats['矿石总数'] = str(current_points)
         
         # 检查今日签到状态
-        is_signed = check_today_status(session, updated_cookie)
+        is_signed = check_today_status(session, fresh_cookie)
         
         # 执行签到/抽奖
         if not is_signed:
             # 执行签到
-            sign_success, sign_detail, sign_ore = check_in(session, updated_cookie)
+            sign_success, sign_detail, sign_ore = check_in(session, fresh_cookie)
             
             if sign_success:
                 sign_status = "签到成功"
@@ -748,12 +906,12 @@ def main():
                 
                 # 重新获取矿石数
                 time.sleep(random.uniform(1, 3))
-                current_points = get_current_points(session, updated_cookie)
+                current_points = get_current_points(session, fresh_cookie)
                 user_stats['矿石总数'] = str(current_points)
                 
                 # 执行抽奖
                 time.sleep(random.uniform(1, 3))
-                lottery_result = lottery_draw(session, updated_cookie)
+                lottery_result = lottery_draw(session, fresh_cookie)
                 
                 # 如果是矿石，累加到今日获得
                 if "矿石" in lottery_result:
@@ -771,7 +929,7 @@ def main():
             
             # 已签到，直接抽奖
             time.sleep(random.uniform(1, 3))
-            lottery_result = lottery_draw(session, updated_cookie)
+            lottery_result = lottery_draw(session, fresh_cookie)
             
             # 如果是矿石，记录今日获得
             if "矿石" in lottery_result:
@@ -795,7 +953,7 @@ def main():
 
         # 发送邮件
         html_content = create_email_html(sign_status, sign_detail, lottery_result, user_stats)
-        send_email("掘金签到通知 - 混合模式", html_content, is_html=True)
+        send_email("掘金签到通知 - 混合模式修复版", html_content, is_html=True)
 
         end_time = format_china_time()
         print(f"[{end_time}] 执行完成")
