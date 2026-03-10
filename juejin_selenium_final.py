@@ -471,8 +471,6 @@ def send_email(subject, content, is_html=False):
 def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     """创建HTML邮件内容 - 紧凑优雅设计（带表情图标）"""
     current_time = format_china_time()
-    current_date = current_time[:10]  # 2026-03-10
-    current_time_only = current_time[11:16]  # 14:59
 
     # 签到状态样式
     if "成功" in sign_status:
@@ -737,9 +735,9 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             <div class="header">
                 <div class="title-row">
                     <span class="title">⛏️ 掘金签到</span>
-                    <span class="time-badge">{current_time_only}</span>
+                    <span class="time-badge">⏱️执行时间：{current_time}</span>
                 </div>
-                <div class="date-row">{current_date}</div>
+                
             </div>
             
             <!-- 统计网格 - 2x2 紧凑布局（带表情图标） -->
@@ -791,7 +789,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             
             <!-- 底部 - 只有执行时间 -->
             <div class="footer">
-                ⏱️ 执行时间：{current_time}
+              ⚡每日自动执行 · 结果实时推送⚡
             </div>
         </div>
     </body>
@@ -911,4 +909,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
