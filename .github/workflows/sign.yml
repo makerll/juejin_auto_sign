@@ -1,17 +1,14 @@
-name: Juejin Auto Sign - Selenium版
+name: Juejin Auto Sign - 混合模式
 
 on:
   schedule:
-    # 每5分钟一个触发点，覆盖6:00-7:00
-    - cron: '10 22 * * *'    # 6:10
-   
+    - cron: '10 22 * * *'   # 6:10
   workflow_dispatch:
 
 jobs:
   sign:
     runs-on: ubuntu-latest
-    # 【关键】设置为 40 分钟：30分钟最大等待 + 10分钟执行缓冲
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
@@ -52,4 +49,4 @@ jobs:
         SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
         SMTP_PORT: ${{ secrets.SMTP_PORT }}
       run: |
-        python juejin_selenium.py
+        python juejin_hybrid.py
