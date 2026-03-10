@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-掘金社区自动签到脚本 - Selenium 最终修复版
-每天先点击签到，再去抽免费抽奖1次
-修复了页面异步加载导致数据读取失败的问题
-增加Cookie过期检测和邮件通知
+掘金社区自动签到脚本 - 混合模式
+先用Selenium模拟用户真实操作（访问首页、沸点）
+再调用API接口实现签到和抽奖
 """
 import os
 import time
 import random
+import requests
 import smtplib
 import ssl
 import re
@@ -43,7 +43,25 @@ if not EMAIL_TO:
 
 # 掘金URL
 JUEJIN_URL = "https://juejin.cn/"
-USER_PAGE_URL = "https://juejin.cn/user/center/signin"
+HOME_URL = "https://juejin.cn/"
+PIN_URL = "https://juejin.cn/pin"
+SIGNIN_URL = "https://juejin.cn/user/center/signin"
+
+# API配置
+BASE_URL = "https://api.juejin.cn"
+CHECK_IN_URL = f"{BASE_URL}/growth_api/v1/check_in"
+GET_STATUS_URL = f"{BASE_URL}/growth_api/v1/get_today_status"
+LOTTERY_URL = f"{BASE_URL}/growth_api/v1/lottery/draw"
+GET_CURRENT_POINT_URL = f"{BASE_URL}/growth_api/v1/get_cur_point"
+GET_USER_INFO_URL = f"{BASE_URL}/user_api/v1/user/get"
+
+# 随机User-Agent列表
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+]
 
 def check_config():
     """检查必要的配置"""
@@ -79,7 +97,7 @@ def setup_driver():
     chrome_options.add_argument('--disable-gpu')
     chrome_options.add_argument('--window-size=1920,1080')
     chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    chrome_options.add_argument(f'--user-agent={random.choice(USER_AGENTS)}')
     
     # 禁用自动化控制标志
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -109,574 +127,190 @@ def parse_cookie_string(cookie_str):
 
 def add_cookies_to_driver(driver, cookie_str):
     """向浏览器添加Cookie"""
+    print("\n🍪 添加Cookie到浏览器...")
     driver.get(JUEJIN_URL)
     time.sleep(2)
     
     cookies = parse_cookie_string(cookie_str)
+    success_count = 0
+    
     for cookie in cookies:
         try:
             driver.add_cookie(cookie)
+            success_count += 1
         except Exception as e:
-            print(f"添加cookie {cookie['name']} 失败: {e}")
+            print(f"  添加cookie {cookie['name']} 失败: {e}")
     
-    print(f"已添加 {len(cookies)} 个cookie")
+    print(f"✅ 成功添加 {success_count}/{len(cookies)} 个cookie")
     driver.refresh()
     time.sleep(3)
+    return success_count > 0
 
-def verify_login_status(driver):
-    """验证是否成功登录 - 增强版"""
+def simulate_user_behavior(driver):
+    """模拟真实用户行为 - 使用Selenium"""
+    print("\n🌐 ===== 模拟真实用户行为 ===== ")
+    
     try:
-        time.sleep(3)
-        page_text = driver.find_element(By.TAG_NAME, 'body').text
-        page_title = driver.title
-        page_url = driver.current_url
+        # 1. 访问首页
+        print("📱 步骤1: 访问掘金首页...")
+        driver.get(HOME_URL)
+        time.sleep(random.uniform(2, 4))
+        print(f"   页面标题: {driver.title}")
+        print(f"   当前URL: {driver.current_url}")
         
-        print(f"页面标题: {page_title}")
-        print(f"当前URL: {page_url}")
-        print(f"页面文本前200字符: {page_text[:200]}")
+        # 随机滚动
+        scroll_height = random.randint(300, 800)
+        driver.execute_script(f"window.scrollTo(0, {scroll_height});")
+        print(f"   📜 向下滚动 {scroll_height}px")
+        time.sleep(random.uniform(1, 3))
         
-        # === 更宽松的登录检测 ===
+        # 2. 访问沸点页面
+        print("\n💬 步骤2: 访问沸点页面...")
+        driver.get(PIN_URL)
+        time.sleep(random.uniform(2, 4))
+        print(f"   页面标题: {driver.title}")
+        print(f"   当前URL: {driver.current_url}")
         
-        # 1. 检查是否有用户相关的元素（你的用户名可能变化）
-        user_indicators = ['关注', '粉丝', '创作者中心', '设置', '个人主页']
-        for indicator in user_indicators:
-            if indicator in page_text:
-                print(f"✅ 检测到用户相关关键词: {indicator}")
-                return True, "success"
+        # 随机滚动
+        scroll_height = random.randint(300, 800)
+        driver.execute_script(f"window.scrollTo(0, {scroll_height});")
+        print(f"   📜 向下滚动 {scroll_height}px")
+        time.sleep(random.uniform(1, 3))
         
-        # 2. 检查是否有签到相关元素
-        sign_indicators = ['签到', '矿石', '连续签到', '累计签到']
-        for indicator in sign_indicators:
-            if indicator in page_text:
-                print(f"✅ 检测到签到相关关键词: {indicator}")
-                return True, "success"
-        
-        # 3. 检查是否出现403错误
-        if '403' in page_text or 'denied' in page_text.lower() or 'forbidden' in page_text.lower():
-            print("❌ 访问被拒绝（403），Cookie可能过期")
-            return False, "cookie_expired_403"
-        
-        # 4. 检查是否出现登录界面
-        if ('登录' in page_text and '注册' in page_text) or 'signin' in page_url:
-            print("❌ 页面显示登录界面")
-            return False, "login_page"
-        
-        # 5. 如果以上都不符合，但页面有内容，假设成功
-        if len(page_text) > 500:  # 页面有足够内容
-            print("⚠️ 未检测到明确状态，但页面有内容，假设登录成功")
-            return True, "assumed_success"
-            
-        return False, "unknown_error"
-        
-    except Exception as e:
-        print(f"验证登录状态时出错: {e}")
-        return False, f"verification_error:{str(e)}"
-
-def send_cookie_expired_email():
-    """发送Cookie过期通知邮件"""
-    try:
-        current_time = format_china_time()
-        subject = "⚠️ 掘金签到 Cookie 已过期"
-        
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body {{
-                    font-family: 'Microsoft YaHei', sans-serif;
-                    padding: 20px;
-                    background-color: #f0f2f5;
-                }}
-                .container {{
-                    max-width: 500px;
-                    margin: 0 auto;
-                    background: #ffffff;
-                    border-radius: 16px;
-                    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-                    overflow: hidden;
-                }}
-                .header {{
-                    background: linear-gradient(135deg, #ef4444, #dc2626);
-                    color: white;
-                    padding: 24px;
-                    text-align: center;
-                }}
-                .header h1 {{
-                    margin: 0;
-                    font-size: 24px;
-                }}
-                .content {{
-                    padding: 24px;
-                }}
-                .warning-icon {{
-                    font-size: 48px;
-                    text-align: center;
-                    margin-bottom: 20px;
-                }}
-                .message {{
-                    background: #fef2f2;
-                    border-left: 4px solid #ef4444;
-                    padding: 16px;
-                    margin-bottom: 20px;
-                    border-radius: 8px;
-                }}
-                .message p {{
-                    margin: 8px 0;
-                    color: #1e293b;
-                }}
-                .time {{
-                    color: #64748b;
-                    font-size: 14px;
-                    text-align: center;
-                    margin-top: 20px;
-                }}
-                .footer {{
-                    background: #f8fafc;
-                    padding: 16px;
-                    text-align: center;
-                    color: #64748b;
-                    font-size: 12px;
-                    border-top: 1px solid #e2e8f0;
-                }}
-                .btn {{
-                    display: inline-block;
-                    background: #3b82f6;
-                    color: white;
-                    text-decoration: none;
-                    padding: 10px 20px;
-                    border-radius: 8px;
-                    margin-top: 16px;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>⛏️ 掘金签到</h1>
-                </div>
-                <div class="content">
-                    <div class="warning-icon">⚠️</div>
-                    <div class="message">
-                        <p><strong>Cookie 已过期</strong></p>
-                        <p>自动签到脚本无法登录掘金，因为存储的 Cookie 已经失效。</p>
-                        <p>请按照以下步骤更新 Cookie：</p>
-                        <ol style="margin-top: 8px; padding-left: 20px;">
-                            <li>打开浏览器无痕模式访问 <a href="https://juejin.cn/">https://juejin.cn/</a></li>
-                            <li>登录你的掘金账号</li>
-                            <li>按 F12 打开开发者工具 → Network 标签</li>
-                            <li>刷新页面，找到任意请求（如 home）</li>
-                            <li>复制请求头中的完整 Cookie 值</li>
-                            <li>更新 GitHub Secrets 中的 <code>JUEJIN_COOKIE</code></li>
-                        </ol>
-                    </div>
-                    <p class="time">⏱️ 检测时间：{current_time}</p>
-                </div>
-                <div class="footer">
-                    <p>🤖 此邮件由自动签到系统发送</p>
-                    <p>请及时更新 Cookie 以恢复自动签到</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_FROM
-        msg['To'] = EMAIL_TO
-        msg['Subject'] = subject
-        msg.attach(MIMEText(html_content, 'html', 'utf-8'))
-        
-        context = ssl.create_default_context()
-        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context, timeout=30)
-        server.login(EMAIL_FROM, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
-        server.quit()
-        print("✅ Cookie过期通知邮件发送成功")
-        return True
-    except Exception as e:
-        print(f"❌ Cookie过期邮件发送失败: {e}")
-        return False
-
-def wait_for_user_data(driver, timeout=30):  # 从15秒增加到30秒
-    """等待用户数据加载完成"""
-    try:
-        print("等待用户数据加载...")
-        wait = WebDriverWait(driver, timeout)
-        
-        # 等待连续签到天数出现且包含数字
-        wait.until(lambda d: (
-            len(d.find_elements(By.XPATH, '//*[contains(text(), "连续签到天数")]')) > 0 and
-            any(char.isdigit() for char in d.find_element(By.TAG_NAME, 'body').text)
-        ))
-        print("用户数据加载完成")
-        return True
-    except TimeoutException:
-        print("用户数据加载超时")
-        return False
-
-def get_user_stats(driver, retry_count=0):
-    """获取用户统计信息：连续签到天数、累计签到天数、矿石总数"""
-    stats = {'连续签到': '0', '累计签到': '0', '矿石总数': '0', '今日获得': '0'}
-
-    try:
-        # 增加初始等待时间
-        time.sleep(3)
-        
-        # 多次尝试获取数据
-        max_attempts = 5
-        for attempt in range(max_attempts):
-            # 获取页面所有可见文本
-            page_text = driver.find_element(By.TAG_NAME, 'body').text
-            print(f"====== 页面文本分析 (尝试 {attempt + 1}/{max_attempts}) ======")
-            print(page_text[:500])
-            print("=========================")
-
-            # 连续签到
-            match = re.search(r'(\d+)\s*(?:天)?\s*连续签到天数', page_text)
-            if not match:
-                match = re.search(r'(\d+)[^\d]*连续', page_text)
-            if match:
-                stats['连续签到'] = match.group(1)
-
-            # 累计签到
-            match = re.search(r'(\d+)\s*(?:天)?\s*累计签到天数', page_text)
-            if not match:
-                match = re.search(r'(\d+)[^\d]*累计', page_text)
-            if match:
-                stats['累计签到'] = match.group(1)
-
-            # 矿石总数
-            ore_matches = re.findall(r'(\d{4,7})\s*矿石', page_text)
-            if ore_matches:
-                stats['矿石总数'] = ore_matches[0]
-            else:
-                all_numbers = re.findall(r'\b(\d{4,7})\b', page_text)
-                # 过滤掉可能的年份（2026-2030）
-                valid_ores = [n for n in all_numbers if not (2020 <= int(n) <= 2030)]
-                if valid_ores:
-                    stats['矿石总数'] = max(valid_ores, key=int)
-            
-            # 检查是否成功获取到数据
-            if stats['连续签到'] != '0' and stats['累计签到'] != '0' and stats['矿石总数'] != '0':
-                print(f"✅ 第{attempt + 1}次尝试成功获取数据")
-                break
-            else:
-                print(f"⚠️ 第{attempt + 1}次尝试数据不全，等待后重试...")
-                time.sleep(3)
-                # 滚动页面触发加载
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(2)
-        
-        # 数据验证：如果连续签到为0但应该有值，说明页面未加载完整
-        if stats['连续签到'] == '0' and '立即签到' in page_text and retry_count < 3:
-            print(f"⚠️ 数据异常：连续签到位0，但存在签到按钮，刷新页面重试 ({retry_count + 1}/3)...")
-            time.sleep(3)
-            driver.refresh()
-            time.sleep(5)
-            return get_user_stats(driver, retry_count + 1)
-
-    except Exception as e:
-        print(f"获取用户统计信息时出错: {e}")
-
-    return stats
-
-def check_sign_status(driver):
-    """检查今日是否已签到，并返回签到按钮"""
-    try:
-        # 打印页面标题和当前URL用于调试
-        print(f"当前页面标题: {driver.title}")
-        print(f"当前URL: {driver.current_url}")
-        
-        # 优先检查是否已显示“今日已签到”状态标签
-        signed_elements = driver.find_elements(By.XPATH, '//*[contains(text(), "今日已签到")]')
-        for element in signed_elements:
-            if element.is_displayed():
-                print("检测到'今日已签到'状态标签")
-                return True, None
-
-        # 查找可点击的签到按钮
-        button_selectors = [
-            '//button[contains(text(), "立即签到")]',
-            '//button[contains(text(), "签到")]',
-            '//div[contains(text(), "立即签到")]',
-            '//span[contains(text(), "立即签到")]',
-            '//*[contains(@class, "sign") and contains(text(), "签到")]',
-            '.signin-btn',
-            '.check-in-btn',
-            'button.sign-btn',
+        # 3. 随机浏览一下
+        print("\n👀 步骤3: 随机浏览...")
+        browse_actions = [
+            lambda: driver.find_element(By.TAG_NAME, 'body').send_keys(" "),  # 空格键翻页
+            lambda: driver.execute_script("window.scrollTo(0, document.body.scrollHeight);"),  # 滚到底部
+            lambda: driver.execute_script("window.scrollTo(0, 0);"),  # 滚回顶部
         ]
-
-        for selector in button_selectors:
-            try:
-                if selector.startswith('//'):
-                    elements = driver.find_elements(By.XPATH, selector)
-                else:
-                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
-
-                for element in elements:
-                    if element.is_displayed() and element.is_enabled():
-                        tag_name = element.tag_name.lower()
-                        print(f"找到可能的签到按钮: 标签={tag_name}, 文本={element.text}, 可见={element.is_displayed()}")
-                        return False, element
-            except Exception as e:
-                continue
-
-        print("未找到明确的签到按钮")
-        return True, None
-
+        action = random.choice(browse_actions)
+        action()
+        time.sleep(random.uniform(1, 2))
+        
+        print("✅ 用户行为模拟完成")
+        
+        # 获取最新的Cookie用于API请求
+        selenium_cookies = driver.get_cookies()
+        cookie_str = '; '.join([f"{c['name']}={c['value']}" for c in selenium_cookies])
+        
+        return True, cookie_str
+        
     except Exception as e:
-        print(f"检查签到状态时出错: {e}")
-        return False, None
+        print(f"❌ 模拟用户行为时出错: {e}")
+        return False, COOKIE  # 返回原始Cookie
 
-def check_sign_success(driver):
-    """检查签到是否成功"""
+def make_api_request(session, url, method='GET', data=None, cookie_str=None):
+    """发送API请求"""
+    headers = {
+        'Accept': '*/*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Content-Type': 'application/json',
+        'Origin': 'https://juejin.cn',
+        'Referer': 'https://juejin.cn/',
+        'User-Agent': random.choice(USER_AGENTS),
+        'Cookie': cookie_str if cookie_str else COOKIE,
+        'Sec-Ch-Ua': '"Not:A-Brand";v="99", "Microsoft Edge";v="145", "Chromium";v="145"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+    }
+    
+    print(f"\n📡 请求: {method} {url}")
+    
     try:
-        # 检查是否出现"今日已签到"
-        signed_elements = driver.find_elements(By.XPATH, '//*[contains(text(), "今日已签到")]')
-        for element in signed_elements:
-            if element.is_displayed():
-                print("检测到'今日已签到'标签")
-                return True
-        
-        # 检查签到按钮是否消失或变灰
-        buttons = driver.find_elements(By.XPATH, '//button[contains(text(), "立即签到")]')
-        if not buttons or not buttons[0].is_displayed():
-            print("签到按钮已消失")
-            return True
-            
-        return False
-    except:
-        return False
-
-def perform_sign(driver, sign_button):
-    """执行签到操作 - 增加弹窗等待"""
-    try:
-        if not sign_button:
-            return False, "未找到签到按钮"
-
-        # 滚动到按钮位置
-        driver.execute_script("arguments[0].scrollIntoView(true);", sign_button)
-        time.sleep(1)
-
-        # 点击签到
-        try:
-            sign_button.click()
-            print("使用常规点击")
-        except:
-            try:
-                driver.execute_script("arguments[0].click();", sign_button)
-                print("使用JavaScript点击")
-            except:
-                actions = ActionChains(driver)
-                actions.move_to_element(sign_button).click().perform()
-                print("使用ActionChains点击")
-
-        print("已点击签到按钮")
-        
-        # ===== 增加弹窗等待 =====
-        print("等待签到弹窗出现...")
-        time.sleep(5)  # 等待弹窗完全加载
-        
-        # 等待"去抽奖"按钮出现
-        try:
-            wait = WebDriverWait(driver, 10)
-            lottery_btn = wait.until(EC.presence_of_element_located(
-                (By.XPATH, '//*[contains(text(), "去抽奖") or contains(text(), "免费抽奖")]'
-            )))
-            print(f"检测到抽奖按钮: {lottery_btn.text}")
-        except TimeoutException:
-            print("未检测到抽奖按钮，可能弹窗已关闭")
-        # =======================
-
-        # === 检测真正的签到成功弹窗 ===
-        reward = "签到成功"
-        try:
-            # 查找包含"签到成功"或"获得"的弹窗
-            popup_elements = driver.find_elements(By.XPATH, 
-                '//*[contains(text(), "签到成功") or contains(text(), "获得") and contains(text(), "矿石")]')
-            
-            for element in popup_elements:
-                if element.is_displayed():
-                    popup_text = element.text
-                    print(f"检测到签到弹窗: {popup_text}")
-                    
-                    ore_match = re.search(r'(\d+)', popup_text)
-                    if ore_match:
-                        reward = f"获得 {ore_match.group(1)} 矿石"
-                        break
-            
-            # 尝试关闭弹窗（点击空白处）
-            try:
-                actions = ActionChains(driver)
-                actions.move_by_offset(100, 100).click().perform()
-                actions.move_to_element(sign_button).perform()
-                print("尝试关闭弹窗")
-                time.sleep(1)
-            except:
-                pass
-                
-        except Exception as e:
-            print(f"弹窗检测跳过: {e}")
-
-        # 验证签到是否成功
-        if check_sign_success(driver):
-            print("✅ 签到验证成功")
-            return True, reward
+        if method.upper() == 'GET':
+            response = session.get(url, headers=headers, timeout=15)
         else:
-            print("⚠️ 签到后状态验证失败，等待2秒重试...")
-            time.sleep(2)
-            if check_sign_success(driver):
-                print("✅ 第二次验证成功")
-                return True, reward
-            else:
-                return False, "签到后状态未改变"
-
-    except Exception as e:
-        print(f"执行签到异常: {e}")
-        return False, f"签到异常: {str(e)}"
-
-def switch_to_lottery_tab(driver):
-    """切换到幸运抽奖菜单"""
-    try:
-        # 查找并点击"幸运抽奖"标签
-        lottery_tab_selectors = [
-            '//*[contains(text(), "幸运抽奖")]',
-            '//div[@role="tab" and contains(text(), "幸运抽奖")]',
-            '.lottery-tab',
-            '//*[contains(@class, "tab") and contains(text(), "抽奖")]'
-        ]
+            response = session.post(url, headers=headers, json=data or {}, timeout=15)
         
-        for selector in lottery_tab_selectors:
+        print(f"📊 状态码: {response.status_code}")
+        
+        if response.status_code == 200:
             try:
-                if selector.startswith('//'):
-                    elements = driver.find_elements(By.XPATH, selector)
+                result = response.json()
+                if result.get('err_no') == 0:
+                    print(f"✅ API请求成功")
+                    return result
                 else:
-                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                
-                for element in elements:
-                    if element.is_displayed():
-                        print(f"找到幸运抽奖标签: {element.text}")
-                        driver.execute_script("arguments[0].scrollIntoView(true);", element)
-                        time.sleep(1)
-                        
-                        try:
-                            element.click()
-                        except:
-                            driver.execute_script("arguments[0].click();", element)
-                        
-                        print("已切换到幸运抽奖页面")
-                        time.sleep(3)
-                        return True
+                    print(f"⚠️ API错误: {result.get('err_msg')}")
+                    return result
             except:
-                continue
-        
-        print("未找到幸运抽奖标签")
-        return False
-        
+                print(f"⚠️ 响应解析失败")
+                return None
+        else:
+            print(f"❌ 请求失败: {response.status_code}")
+            return None
+            
     except Exception as e:
-        print(f"切换抽奖标签异常: {e}")
-        return False
+        print(f"❌ 请求异常: {e}")
+        return None
 
-def check_lottery_available(driver):
-    """检查是否有免费抽奖机会，并返回抽奖按钮"""
-    try:
-        # 先切换到抽奖页面
-        if not switch_to_lottery_tab(driver):
-            return False, "无法切换到抽奖页面"
-        
-        # 获取页面文本检查抽奖次数
-        page_text = driver.find_element(By.TAG_NAME, 'body').text
-        
-        # 检查免费抽奖次数
-        if '免费抽奖次数：0次' in page_text:
-            print("免费抽奖次数已用完")
-            return False, "今天已经抽过奖"
-        
-        if '免费抽奖次数：1次' in page_text:
-            print("检测到免费抽奖次数：1次")
-        
-        # 查找抽奖按钮
-        lottery_selectors = [
-            '//*[contains(text(), "去抽奖")]',
-            '//*[contains(text(), "免费抽奖")]',
-            '//button[contains(text(), "抽奖")]',
-            '.lottery-btn',
-            '.draw-btn',
-            '//div[contains(@class, "draw") and contains(@class, "btn")]',
-        ]
-        
-        for selector in lottery_selectors:
-            try:
-                if selector.startswith('//'):
-                    elements = driver.find_elements(By.XPATH, selector)
-                else:
-                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                
-                for element in elements:
-                    if element.is_displayed() and element.is_enabled():
-                        print(f"找到抽奖按钮: {element.text}")
-                        return True, element
-            except:
-                continue
-        
-        # 检查是否已显示抽奖结果
-        if '恭喜' in page_text and ('抽中' in page_text or '中奖' in page_text):
-            print("检测到已抽过奖的记录")
-            return False, "今天已经抽过奖"
-        
-        return False, "未找到抽奖按钮"
-        
-    except Exception as e:
-        print(f"检查抽奖状态异常: {e}")
-        return False, "检查失败"
+def get_user_info(session, cookie_str):
+    """获取用户信息"""
+    result = make_api_request(session, GET_USER_INFO_URL, 'GET', cookie_str=cookie_str)
+    if result and result.get('err_no') == 0:
+        data = result.get('data', {})
+        username = data.get('user_name', '未知')
+        print(f"👤 当前用户: {username}")
+        return username
+    return None
 
-def perform_lottery(driver, lottery_element):
-    """执行抽奖并获取具体奖品信息（包含矿石数量）"""
-    try:
-        # 滚动到按钮位置
-        driver.execute_script("arguments[0].scrollIntoView(true);", lottery_element)
-        time.sleep(1)
+def get_current_points(session, cookie_str):
+    """获取当前矿石数"""
+    result = make_api_request(session, GET_CURRENT_POINT_URL, 'GET', cookie_str=cookie_str)
+    if result and result.get('err_no') == 0:
+        points = result.get('data', 0)
+        print(f"💰 当前矿石: {points}")
+        return points
+    return 0
 
-        # 点击抽奖
-        try:
-            lottery_element.click()
-        except:
-            driver.execute_script("arguments[0].click();", lottery_element)
+def check_today_status(session, cookie_str):
+    """检查今天是否已签到"""
+    result = make_api_request(session, GET_STATUS_URL, 'GET', cookie_str=cookie_str)
+    if result and result.get('err_no') == 0:
+        is_signed = result.get('data', False)
+        print(f"📅 今日签到状态: {'已签到' if is_signed else '未签到'}")
+        return is_signed
+    return False
 
-        print("已点击抽奖按钮")
-        time.sleep(3)
+def check_in(session, cookie_str):
+    """执行签到"""
+    print("\n🔄 执行签到...")
+    result = make_api_request(session, CHECK_IN_URL, 'POST', data={}, cookie_str=cookie_str)
+    
+    if result and result.get('err_no') == 0:
+        data = result.get('data', {})
+        incr_point = data.get('incr_point', 0)
+        total_point = data.get('total_point', 0)
+        print(f"✅ 签到成功！获得 {incr_point} 矿石，当前总矿石: {total_point}")
+        return True, f"获得 {incr_point} 矿石", incr_point
+    else:
+        if result and result.get('err_msg'):
+            print(f"❌ 签到失败: {result.get('err_msg')}")
+            return False, result.get('err_msg'), 0
+        return False, "签到失败", 0
 
-        # 获取抽奖结果
-        page_text = driver.find_element(By.TAG_NAME, 'body').text
-
-        # 匹配带数字的矿石
-        ore_match = re.search(r'获得[：:]\s*(\d+)\s*矿石', page_text)
-        if ore_match:
-            ore_count = ore_match.group(1)
-            print(f"🎉 抽中获得 {ore_count} 矿石")
-            return f"获得 {ore_count} 矿石"
-
-        ore_match2 = re.search(r'抽中[“”]?(\d+)\s*矿石', page_text)
-        if ore_match2:
-            ore_count = ore_match2.group(1)
-            return f"获得 {ore_count} 矿石"
-
-        # 匹配其他奖品格式
-        prize_match = re.search(r'恭喜[^，,\n]+抽中[“”]?([^“”\n]+)[”"]?', page_text)
-        if prize_match:
-            prize = prize_match.group(1).strip()
-            return f"获得: {prize}"
-
-        if '谢谢参与' in page_text:
-            return "谢谢参与"
-
-        return "抽奖完成"
-
-    except Exception as e:
-        print(f"执行抽奖异常: {e}")
-        return f"抽奖异常: {str(e)}"
+def lottery_draw(session, cookie_str):
+    """执行抽奖"""
+    print("\n🎲 执行抽奖...")
+    result = make_api_request(session, LOTTERY_URL, 'POST', data={}, cookie_str=cookie_str)
+    
+    if result and result.get('err_no') == 0:
+        data = result.get('data', {})
+        lottery_name = data.get('lottery_name', '未知')
+        print(f"🎉 抽奖获得: {lottery_name}")
+        return lottery_name
+    else:
+        if result and result.get('err_msg'):
+            if '今天已经抽过奖' in result.get('err_msg'):
+                print("⏰ 今天已经抽过奖了")
+                return "今天已经抽过奖"
+            print(f"❌ 抽奖失败: {result.get('err_msg')}")
+            return f"抽奖失败: {result.get('err_msg')}"
+        return "抽奖失败"
 
 def send_email(subject, content, is_html=False):
     """发送邮件通知"""
@@ -707,7 +341,7 @@ def send_email(subject, content, is_html=False):
         return False
 
 def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
-    """创建HTML邮件内容 - 清新优雅紧凑版"""
+    """创建HTML邮件内容"""
     current_time = format_china_time()
 
     # 签到状态
@@ -722,15 +356,15 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
         sign_color = "#ef4444"
 
     # 抽奖结果
-    if "获得" in lottery_result:
+    if "获得" in lottery_result and "矿石" in lottery_result:
+        lottery_icon = "🎁"
+        lottery_badge = "矿石奖励"
+        lottery_color = "#8b5cf6"
+    elif "获得" in lottery_result:
         lottery_icon = "🎁"
         lottery_badge = "恭喜中奖"
         lottery_color = "#8b5cf6"
-    elif "谢谢参与" in lottery_result:
-        lottery_icon = "🍀"
-        lottery_badge = "谢谢参与"
-        lottery_color = "#6b7280"
-    elif "已经抽过" in lottery_result:
+    elif "今天已经抽过" in lottery_result:
         lottery_icon = "⏰"
         lottery_badge = "今日已抽"
         lottery_color = "#f59e0b"
@@ -770,8 +404,8 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
             }}
             .header {{
                 padding: 24px 24px 16px;
-                background: linear-gradient(112deg, #ffffff 0%, #f9fafc 100%);
-                border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+                background: linear-gradient(112deg, #1E80FF, #0052CC);
+                color: white;
             }}
             .title-row {{
                 display: flex;
@@ -782,20 +416,18 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
             .title {{
                 font-size: 20px;
                 font-weight: 600;
-                background: linear-gradient(135deg, #1e293b, #0f172a);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
+                color: white;
             }}
             .date-badge {{
                 font-size: 13px;
-                color: #64748b;
-                background: #f1f5f9;
+                color: rgba(255,255,255,0.9);
+                background: rgba(255,255,255,0.2);
                 padding: 4px 10px;
                 border-radius: 40px;
             }}
             .sub-title {{
                 font-size: 13px;
-                color: #64748b;
+                color: rgba(255,255,255,0.9);
                 display: flex;
                 align-items: center;
                 gap: 6px;
@@ -803,7 +435,7 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
             .dot {{
                 width: 4px;
                 height: 4px;
-                background: #cbd5e1;
+                background: rgba(255,255,255,0.5);
                 border-radius: 50%;
             }}
             .stats-grid {{
@@ -963,9 +595,9 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
                     <span class="date-badge">{current_time}</span>
                 </div>
                 <div class="sub-title">
-                    <span>每日自动签到</span>
+                    <span>Selenium+API混合模式</span>
                     <span class="dot"></span>
-                    <span>免费抽奖1次</span>
+                    <span>首页·沸点·签到·抽奖</span>
                 </div>
             </div>
             
@@ -1020,7 +652,7 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
             
             <div class="footer">
                 <div class="footer-text">
-                    ⚡ 每日自动执行 · 结果实时推送 ⚡
+                    ⚡ 混合模式 · 稳定可靠 ⚡
                 </div>
             </div>
         </div>
@@ -1031,9 +663,8 @@ def create_email_html(sign_status, sign_detail, lottery_result, user_stats):
 
 def main():
     """主函数"""
-    # ================= 随机等待逻辑 (1-10 分钟) =================
-    # 生成 1 到 10 之间的随机整数
-    wait_minutes = random.randint(1, 10)
+    # ================= 随机等待逻辑 (1-3 分钟) =================
+    wait_minutes = random.randint(1, 3)
     wait_seconds = wait_minutes * 60
     
     start_time = time.strftime("%H:%M:%S")
@@ -1045,7 +676,6 @@ def main():
     print(f"⏳ [预计执行] 将在约 {end_time_str} 开始签到...")
     print("-" * 30)
     
-    # 执行等待
     time.sleep(wait_seconds)
     
     print("-" * 30)
@@ -1053,9 +683,8 @@ def main():
     print("🚀 开始执行签到逻辑...")
     # =========================================================
 
-    # 开始执行签到逻辑
     start_time = format_china_time()
-    print(f"[{start_time}] 开始执行掘金签到 (Selenium版)")
+    print(f"[{start_time}] 开始执行掘金签到 (混合模式)")
 
     if not check_config():
         return
@@ -1064,186 +693,112 @@ def main():
     sign_status = "失败"
     sign_detail = "未知错误"
     lottery_result = "未执行"
-    user_stats = {'连续签到': '0', '累计签到': '0', '矿石总数': '0', '今日获得': '0'}
+    user_stats = {'连续签到': '未知', '累计签到': '未知', '矿石总数': '0', '今日获得': '0'}
 
     try:
-        # 随机延迟（5-30秒，模拟人类操作）
-        delay = random.randint(5, 30)
-        print(f"随机延迟 {delay} 秒")
-        time.sleep(delay)
-
-        # 启动浏览器
+        # ===== 第一步：使用Selenium模拟用户行为 =====
+        print("\n🌐 ===== 第一阶段：Selenium模拟用户操作 =====")
         print("正在启动Chrome浏览器...")
         driver = setup_driver()
-
+        
         # 添加Cookie
-        print("正在添加Cookie...")
         add_cookies_to_driver(driver, COOKIE)
         
-        # ===== 验证登录状态 =====
-        login_valid, login_status = verify_login_status(driver)
-        if not login_valid:
-            print("❌ Cookie无效或已过期")
-            # 发送Cookie过期通知邮件
-            send_cookie_expired_email()
-            sign_detail = f"Cookie已过期: {login_status}"
-            raise Exception(f"Cookie invalid: {login_status}")
-        # =======================
-
-        # 进入签到页面
-        print(f"正在访问签到页面: {USER_PAGE_URL}")
-        driver.get(USER_PAGE_URL)
+        # 模拟用户行为（访问首页、沸点、随机浏览）
+        success, updated_cookie = simulate_user_behavior(driver)
         
-        # ===== 增强的等待逻辑 =====
-        print("等待页面完全加载...")
-        time.sleep(5)
+        if not success:
+            print("⚠️ 用户行为模拟部分失败，使用原始Cookie继续")
+            updated_cookie = COOKIE
         
-        # 多次滚动触发加载
-        for i in range(3):
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            print(f"第{i+1}次滚动触发加载")
-            time.sleep(3)
+        # 关闭浏览器，释放资源
+        print("\n🔚 关闭浏览器...")
+        driver.quit()
+        driver = None
         
-        # 等待用户数据加载
-        wait_for_user_data(driver, timeout=30)
-        # =========================
-
-        # 获取签到前的初始数据
-        print("正在获取签到前用户统计信息...")
-        initial_stats = get_user_stats(driver)
-        print(f"签到前统计: {initial_stats}")
-
-        # 检查签到状态
-        is_signed, sign_button = check_sign_status(driver)
-        print(f"今日签到状态: {'已签到' if is_signed else '未签到'}")
-
-        if not is_signed and sign_button:
-            # 情况1：未签到 → 先签到，再抽奖
-            print("开始执行签到...")
-            sign_success, sign_reward = perform_sign(driver, sign_button)
-
-            if sign_success:
-                # === 从签到奖励中提取数字 ===
-                sign_ore = 0
-                if "获得" in sign_reward:
-                    reward_numbers = re.findall(r'\d+', sign_reward)
-                    if reward_numbers:
-                        sign_ore = int(reward_numbers[0])
-                        user_stats['今日获得'] = str(sign_ore)
-                        print(f"今日签到获得: {sign_ore} 矿石")
-                else:
-                    # 如果没提取到，通过页面中的+号提取
-                    time.sleep(1)
-                    page_text = driver.find_element(By.TAG_NAME, 'body').text
-                    plus_matches = re.findall(r'\+(\d+)', page_text)
-                    if plus_matches:
-                        sign_ore = int(plus_matches[0])
-                        user_stats['今日获得'] = str(sign_ore)
-                        print(f"今日签到获得(从+号提取): {sign_ore} 矿石")
-
-                sign_status = "签到成功"
-                sign_detail = sign_reward
-                print(f"✅ {sign_status}: {sign_detail}")
-
-                # 验证数据是否真的变化
-                time.sleep(2)
-                verify_stats = get_user_stats(driver)
-                print(f"签到后验证统计: {verify_stats}")
-
-                # 签到成功 → 去抽奖
-                print("\n=== 签到完成，开始执行抽奖 ===")
-                lottery_available, lottery_element = check_lottery_available(driver)
-
-                if lottery_available and lottery_element:
-                    print("发现免费抽奖机会，开始抽奖...")
-                    lottery_result = perform_lottery(driver, lottery_element)
-                    
-                    # 如果是矿石，累加到今日获得
-                    if "矿石" in lottery_result:
-                        ore_match = re.search(r'(\d+)', lottery_result)
-                        if ore_match:
-                            lottery_ore = int(ore_match.group(1))
-                            current_total = int(user_stats['今日获得'] or 0)
-                            user_stats['今日获得'] = str(current_total + lottery_ore)
-                            print(f"今日抽奖获得: {lottery_ore} 矿石，累计: {user_stats['今日获得']}")
-                else:
-                    lottery_result = lottery_element if isinstance(lottery_element, str) else "今天已经抽过奖"
-                    print(f"抽奖状态: {lottery_result}")
-            else:
-                sign_status = "签到失败"
-                sign_detail = sign_reward
-                print(f"❌ {sign_status}")
-                lottery_result = "签到失败，未抽奖"
-
-        else:
-            # 情况2：已签到 → 只抽奖
-            sign_status = "已签到"
-            sign_detail = "今日已完成签到"
-            print(f"✅ {sign_status}")
+        # 随机延迟，模拟人类操作间隔
+        time.sleep(random.uniform(2, 5))
+        
+        # ===== 第二步：使用API执行签到和抽奖 =====
+        print("\n🚀 ===== 第二阶段：API执行签到抽奖 =====")
+        
+        # 创建session
+        session = requests.Session()
+        
+        # 获取用户信息
+        username = get_user_info(session, updated_cookie)
+        if username:
+            print(f"👋 欢迎 {username}")
+        
+        # 获取当前矿石数
+        current_points = get_current_points(session, updated_cookie)
+        user_stats['矿石总数'] = str(current_points)
+        
+        # 检查今日签到状态
+        is_signed = check_today_status(session, updated_cookie)
+        
+        # 执行签到/抽奖
+        if not is_signed:
+            # 执行签到
+            sign_success, sign_detail, sign_ore = check_in(session, updated_cookie)
             
-            print("\n=== 今日已签到，检查抽奖机会 ===")
-            lottery_available, lottery_element = check_lottery_available(driver)
-
-            if lottery_available and lottery_element:
-                print("发现免费抽奖机会，开始抽奖...")
-                lottery_result = perform_lottery(driver, lottery_element)
+            if sign_success:
+                sign_status = "签到成功"
+                user_stats['今日获得'] = str(sign_ore)
                 
+                # 重新获取矿石数
+                time.sleep(random.uniform(1, 3))
+                current_points = get_current_points(session, updated_cookie)
+                user_stats['矿石总数'] = str(current_points)
+                
+                # 执行抽奖
+                time.sleep(random.uniform(1, 3))
+                lottery_result = lottery_draw(session, updated_cookie)
+                
+                # 如果是矿石，累加到今日获得
                 if "矿石" in lottery_result:
                     ore_match = re.search(r'(\d+)', lottery_result)
                     if ore_match:
                         lottery_ore = int(ore_match.group(1))
-                        user_stats['今日获得'] = str(lottery_ore)
-                        print(f"今日抽奖获得: {lottery_ore} 矿石")
+                        current_total = int(user_stats['今日获得'] or 0)
+                        user_stats['今日获得'] = str(current_total + lottery_ore)
             else:
-                lottery_result = lottery_element if isinstance(lottery_element, str) else "今天已经抽过奖"
-                print(f"抽奖状态: {lottery_result}")
+                sign_status = "签到失败"
+                lottery_result = "签到失败，未抽奖"
+        else:
+            sign_status = "已签到"
+            sign_detail = "今日已完成签到"
+            
+            # 已签到，直接抽奖
+            time.sleep(random.uniform(1, 3))
+            lottery_result = lottery_draw(session, updated_cookie)
+            
+            # 如果是矿石，记录今日获得
+            if "矿石" in lottery_result:
+                ore_match = re.search(r'(\d+)', lottery_result)
+                if ore_match:
+                    lottery_ore = int(ore_match.group(1))
+                    user_stats['今日获得'] = str(lottery_ore)
 
-        # === 在所有操作完成后，重新获取最新的统计数据 ===
-        print("\n=== 操作完成，获取最新统计数据 ===")
-        time.sleep(3)
-        
-        # 切换回签到页面
-        print("正在切换回签到页面...")
-        driver.get(USER_PAGE_URL)
-        time.sleep(3)
-        
-        # 重新获取最新数据
-        final_stats = get_user_stats(driver)
-        print(f"最终统计: {final_stats}")
-        
-        # 更新 user_stats 为最终数据
-        user_stats['连续签到'] = final_stats['连续签到']
-        user_stats['累计签到'] = final_stats['累计签到']
-        user_stats['矿石总数'] = final_stats['矿石总数']
-        # 今日获得已经在过程中累加，保持不变
-
-        print(f"\n最终结果 - 签到: {sign_status}, 抽奖: {lottery_result}")
+        print(f"\n📊 最终结果 - 签到: {sign_status}, 抽奖: {lottery_result}")
 
     except Exception as e:
         error_msg = str(e)
-        print(f"执行过程中出现异常: {error_msg}")
+        print(f"❌ 执行过程中出现异常: {error_msg}")
         sign_detail = f"异常: {error_msg[:100]}"
-        if driver:
-            try:
-                driver.save_screenshot("error.png")
-                print("已保存错误截图")
-            except:
-                pass
-
+        
     finally:
-        # 关闭浏览器
+        # 确保浏览器被关闭
         if driver:
             driver.quit()
             print("浏览器已关闭")
 
         # 发送邮件
         html_content = create_email_html(sign_status, sign_detail, lottery_result, user_stats)
-        send_email("掘金签到通知", html_content, is_html=True)
+        send_email("掘金签到通知 - 混合模式", html_content, is_html=True)
 
         end_time = format_china_time()
         print(f"[{end_time}] 执行完成")
 
 if __name__ == "__main__":
     main()
-
-
