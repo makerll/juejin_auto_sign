@@ -1,52 +1,23 @@
-name: Juejin Auto Sign - 混合模式
-
+name: Juejin Auto Sign - API终极版
 on:
   schedule:
     - cron: '10 22 * * *'   # 6:10
   workflow_dispatch:
-
 jobs:
   sign:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
-    
+    timeout-minutes: 10
     steps:
-    - name: 检出代码
-      uses: actions/checkout@v3
-      with:
-        ref: 'master'
-    
-    - name: 设置Python环境
+    - uses: actions/checkout@v3
+    - name: 设置Python
       uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
-    - name: 安装Chrome和ChromeDriver
-      run: |
-        # 安装Chrome
-        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-        sudo apt-get update
-        sudo apt-get install -y google-chrome-stable
-        
-        # 安装webdriver-manager
-        pip install webdriver-manager
-    
-    - name: 安装Python依赖
-      run: |
-        python -m pip install --upgrade pip
-        pip install selenium webdriver-manager requests
-    
-    - name: 运行签到脚本
+      with: {python-version: '3.10'}
+    - name: 安装依赖
+      run: pip install requests
+    - name: 运行签到
       env:
         JUEJIN_COOKIE: ${{ secrets.JUEJIN_COOKIE }}
         EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         EMAIL_TO: ${{ secrets.EMAIL_TO }}
-        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        SMTP_PORT: ${{ secrets.SMTP_PORT }}
-      run: |
-        python juejin_hybrid.py
+      run: python juejin_api_final.py
