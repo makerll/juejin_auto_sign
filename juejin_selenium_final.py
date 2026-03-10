@@ -562,20 +562,22 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             .title {{
                 font-size: 20px;
                 font-weight: 600;
-                color: #1e293b;
+                color: #3370ff;
             }}
             
             .time-badge {{
-                color: #64748b;
+                color: #3370ff;
                 font-size: 13px;
                 background: #f1f5f9;
                 padding: 4px 10px;
-                border-radius: 30px;
+                border-radius: 12px;
+                font-weight: bold;
             }}
             
             .date-row {{
                 color: #94a3b8;
                 font-size: 12px;
+                margin-top: 10px;
             }}
             
             /* 统计网格 - 2x2 紧凑布局 */
@@ -911,6 +913,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
