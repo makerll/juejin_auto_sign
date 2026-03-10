@@ -469,8 +469,10 @@ def send_email(subject, content, is_html=False):
         return False
 
 def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
-    """创建HTML邮件内容 - 紧凑优雅设计（带表情图标）"""
+    """创建HTML邮件内容 - 紧凑优雅设计（12px圆角）"""
     current_time = format_china_time()
+    current_date = current_time[:10]  # 2026-03-10
+    current_time_only = current_time[11:16]  # 14:59
 
     # 签到状态样式
     if "成功" in sign_status:
@@ -580,13 +582,13 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             .stats-grid {{
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 1px;
-                background: #f0f2f5;
-                padding: 1px;
+                gap: 8px;
+                padding: 16px 20px;
             }}
             
             .stat-item {{
-                background: #ffffff;
+                background: #f8fafc;
+                border-radius: 12px;
                 padding: 16px 12px;
                 text-align: center;
             }}
@@ -613,7 +615,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             
             /* 内容区域 */
             .content {{
-                padding: 16px 20px;
+                padding: 0 20px 20px;
             }}
             
             /* 签到卡片 */
@@ -622,7 +624,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 align-items: center;
                 justify-content: space-between;
                 background: #f8fafc;
-                border-radius: 16px;
+                border-radius: 12px;
                 padding: 12px 16px;
                 margin-bottom: 12px;
             }}
@@ -674,7 +676,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 align-items: center;
                 justify-content: space-between;
                 background: #f8fafc;
-                border-radius: 16px;
+                border-radius: 12px;
                 padding: 12px 16px;
             }}
             
@@ -731,16 +733,16 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     </head>
     <body>
         <div class="card">
-            <!-- 头部 - 只保留时间和标题 -->
+            <!-- 头部 -->
             <div class="header">
                 <div class="title-row">
                     <span class="title">⛏️ 掘金签到</span>
-                    <span class="time-badge">⏱️执行时间：{current_time}</span>
+                    <span class="time-badge">{current_time_only}</span>
                 </div>
-                
+                <div class="date-row">{current_date}</div>
             </div>
             
-            <!-- 统计网格 - 2x2 紧凑布局（带表情图标） -->
+            <!-- 统计网格 - 12px圆角卡片 -->
             <div class="stats-grid">
                 <div class="stat-item">
                     <div class="stat-label">📅 连续签到</div>
@@ -762,7 +764,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             
             <!-- 内容区域 -->
             <div class="content">
-                <!-- 签到卡片 - 紧凑设计 -->
+                <!-- 签到卡片 - 12px圆角 -->
                 <div class="sign-section">
                     <div class="sign-left">
                         <div class="sign-icon">{sign_icon}</div>
@@ -774,7 +776,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                     <span class="sign-badge">{sign_icon} {sign_text}</span>
                 </div>
                 
-                <!-- 抽奖卡片 - 紧凑设计 -->
+                <!-- 抽奖卡片 - 12px圆角 -->
                 <div class="lottery-section">
                     <div class="lottery-left">
                         <div class="lottery-icon">{lottery_icon}</div>
@@ -787,9 +789,9 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 </div>
             </div>
             
-            <!-- 底部 - 只有执行时间 -->
+            <!-- 底部 -->
             <div class="footer">
-              ⚡每日自动执行 · 结果实时推送⚡
+                ⏱️ 执行时间：{current_time}
             </div>
         </div>
     </body>
@@ -909,5 +911,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
