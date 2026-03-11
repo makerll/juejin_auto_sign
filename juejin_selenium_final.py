@@ -197,12 +197,61 @@ def simulate_user_behavior(driver):
         print(f"⚠️ 模拟用户行为时出错: {e}")
         return False
 
+def wait_for_page_load(driver, retry_count=0):
+    """等待页面加载，确保数据出现"""
+    print("\n⏳ 等待页面数据加载...")
+    
+    # 滚动页面触发加载
+    for i in range(3):
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)
+        print(f"  第{i+1}次滚动")
+    
+    # 等待关键元素出现
+    try:
+        # 等待连续签到天数出现
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.XPATH, '//*[contains(text(), "连续签到天数")]'))
+        )
+        print("✅ 检测到连续签到天数元素")
+        
+        # 额外等待数据填充
+        time.sleep(3)
+        
+        # 检查是否有有效数据
+        page_text = driver.find_element(By.TAG_NAME, 'body').text
+        numbers = re.findall(r'\b\d+\b', page_text)
+        valid_numbers = [n for n in numbers if len(n) >= 3 and not (2020 <= int(n) <= 2030)]
+        
+        if valid_numbers:
+            print(f"✅ 检测到有效数字: {valid_numbers[:3]}")
+            return True
+        else:
+            print("⚠️ 未检测到有效数字")
+            
+    except TimeoutException:
+        print("⚠️ 等待超时")
+    
+    # 如果数据仍未加载，刷新页面重试
+    if retry_count < 2:
+        print(f"🔄 刷新页面重试 ({retry_count + 1}/2)...")
+        driver.refresh()
+        time.sleep(5)
+        return wait_for_page_load(driver, retry_count + 1)
+    
+    return False
+
 def get_user_stats(driver):
     """从页面获取用户统计信息"""
     stats = {'连续签到': '未知', '累计签到': '未知', '矿石总数': '0', '今日获得': '0'}
 
     try:
+        # 先等待页面加载
+        if not wait_for_page_load(driver):
+            print("⚠️ 页面可能未完全加载")
+        
         page_text = driver.find_element(By.TAG_NAME, 'body').text
+        print("📄 页面文本预览:", page_text[:300].replace('\n', ' '))
         
         # 连续签到
         match = re.search(r'(\d+)\s*(?:天)?\s*连续签到天数', page_text)
@@ -210,6 +259,7 @@ def get_user_stats(driver):
             match = re.search(r'(\d+)[^\d]*连续', page_text)
         if match:
             stats['连续签到'] = match.group(1)
+            print(f"📊 连续签到: {stats['连续签到']}")
 
         # 累计签到
         match = re.search(r'(\d+)\s*(?:天)?\s*累计签到天数', page_text)
@@ -217,22 +267,24 @@ def get_user_stats(driver):
             match = re.search(r'(\d+)[^\d]*累计', page_text)
         if match:
             stats['累计签到'] = match.group(1)
+            print(f"📊 累计签到: {stats['累计签到']}")
 
         # 矿石总数
         ore_matches = re.findall(r'(\d{4,7})\s*矿石', page_text)
         if ore_matches:
             stats['矿石总数'] = ore_matches[0]
+            print(f"💰 矿石总数: {stats['矿石总数']}")
         else:
             all_numbers = re.findall(r'\b(\d{4,7})\b', page_text)
             valid_ores = [n for n in all_numbers if not (2020 <= int(n) <= 2030)]
             if valid_ores:
                 stats['矿石总数'] = max(valid_ores, key=int)
+                print(f"💰 矿石总数(推断): {stats['矿石总数']}")
 
     except Exception as e:
         print(f"获取用户统计信息时出错: {e}")
 
     return stats
-
 def check_and_click_sign(driver):
     """检查并点击签到按钮"""
     print("\n🔍 检查签到状态...")
@@ -803,6 +855,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
 
 def main():
     """主函数"""
+    # ================= 随机等待逻辑 (1-3 分钟) =================
     wait_minutes = random.randint(1, 3)
     wait_seconds = wait_minutes * 60
     
@@ -820,6 +873,7 @@ def main():
     print("-" * 30)
     print(f"✅ [唤醒] 等待结束，当前时间: {time.strftime('%H:%M:%S')}")
     print("🚀 开始执行签到逻辑...")
+    # =========================================================
 
     start_time = format_china_time()
     print(f"[{start_time}] 开始执行掘金签到 (纯Selenium最终版)")
@@ -849,10 +903,50 @@ def main():
         # 模拟用户行为
         simulate_user_behavior(driver)
         
-        # 获取签到前统计数据
+        # ===== 获取签到前统计数据（带重试机制）=====
         print("\n📊 ===== 获取当前数据 =====")
         user_stats = get_user_stats(driver)
         print(f"当前统计: {user_stats}")
+        
+        # 验证数据是否有效（所有都为0表示数据未加载）
+        retry_count = 0
+        max_retries = 3
+        
+        while (user_stats['连续签到'] == '0' or user_stats['连续签到'] == '未知' or 
+               user_stats['累计签到'] == '0' or user_stats['累计签到'] == '未知' or 
+               user_stats['矿石总数'] == '0') and retry_count < max_retries:
+            
+            retry_count += 1
+            print(f"\n⚠️ 数据异常：统计信息不完整，尝试刷新重试 ({retry_count}/{max_retries})...")
+            
+            # 刷新页面
+            driver.refresh()
+            time.sleep(5)
+            
+            # 再次模拟滚动触发加载
+            for i in range(2):
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2)
+            
+            # 重新获取数据
+            user_stats = get_user_stats(driver)
+            print(f"重试 {retry_count} 后统计: {user_stats}")
+        
+        # 如果最终还是0，尝试直接访问签到页面
+        if (user_stats['连续签到'] == '0' or user_stats['累计签到'] == '0' or 
+            user_stats['矿石总数'] == '0') and retry_count >= max_retries:
+            print("\n🔄 多次重试失败，直接访问签到页面...")
+            driver.get(SIGNIN_URL)
+            time.sleep(5)
+            
+            # 再次滚动触发加载
+            for i in range(3):
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2)
+            
+            user_stats = get_user_stats(driver)
+            print(f"最终统计: {user_stats}")
+        # ======================================
         
         # 初始化今日获得
         today_ore = 0
@@ -883,13 +977,27 @@ def main():
             print(f"📊 今日共获得 {today_ore} 矿石")
             
             # 重新获取最新数据
+            print("\n📊 ===== 获取最新统计数据 =====")
             time.sleep(3)
+            
+            # 返回签到页面
             driver.get(SIGNIN_URL)
             time.sleep(3)
+            
+            # 滚动触发加载
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+            
             final_stats = get_user_stats(driver)
-            user_stats['连续签到'] = final_stats['连续签到']
-            user_stats['累计签到'] = final_stats['累计签到']
-            user_stats['矿石总数'] = final_stats['矿石总数']
+            print(f"最终统计: {final_stats}")
+            
+            # 更新最终数据
+            if final_stats['连续签到'] != '0' and final_stats['连续签到'] != '未知':
+                user_stats['连续签到'] = final_stats['连续签到']
+            if final_stats['累计签到'] != '0' and final_stats['累计签到'] != '未知':
+                user_stats['累计签到'] = final_stats['累计签到']
+            if final_stats['矿石总数'] != '0':
+                user_stats['矿石总数'] = final_stats['矿石总数']
             
         else:
             sign_status = "签到失败"
@@ -905,6 +1013,7 @@ def main():
             driver.quit()
             print("\n🔚 浏览器已关闭")
 
+        # 发送邮件
         html_content = create_email_html(sign_status, sign_detail, lottery_info, user_stats)
         send_email("掘金签到通知", html_content, is_html=True)
 
@@ -913,6 +1022,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
