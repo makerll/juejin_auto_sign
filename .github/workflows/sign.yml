@@ -2,7 +2,7 @@ name: Juejin Auto Sign - Selenium
 
 on:
   schedule:
-    - cron: '10 22 * * *'   # 6:10
+    - cron: '20 01 * * *'   # 6:10
   workflow_dispatch:
 
 jobs:
