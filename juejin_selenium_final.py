@@ -950,6 +950,8 @@ def main():
         
         # 初始化今日获得
         today_ore = 0
+        # 在签到前记录初始矿石数
+        initial_points = int(user_stats['矿石总数']) if user_stats['矿石总数'] != '未知' else 0
         
         # 执行签到
         sign_success, sign_result, sign_button, sign_ore = check_and_click_sign(driver)
@@ -959,8 +961,18 @@ def main():
                 sign_status = "已签到"
                 sign_detail = "今日已完成签到"
             else:
+                # 获取签到后的矿石数（通过重新获取数据）
+                time.sleep(3)
+                temp_stats = get_user_stats(driver)
+                current_points = int(temp_stats['矿石总数']) if temp_stats['矿石总数'] != '未知' else 0
+                
+                # 通过差值计算签到获得的矿石
+                if initial_points > 0 and current_points > 0:
+                    sign_ore = current_points - initial_points
+                    print(f"📊 通过数据差值计算: 签到获得 {sign_ore} 矿石")
+                
                 sign_status = "签到成功"
-                sign_detail = sign_result
+                sign_detail = sign_result if sign_result != "签到成功" else f"获得 {sign_ore} 矿石"
                 today_ore += sign_ore
                 print(f"📝 签到获得 {sign_ore} 矿石")
             
