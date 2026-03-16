@@ -521,10 +521,10 @@ def send_email(subject, content, is_html=False):
         return False
 
 def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
-    """创建HTML邮件内容 - 紧凑优雅设计（12px圆角）"""
+    """创建HTML邮件内容 - 红框区域重新设计"""
     current_time = format_china_time()
-    current_date = current_time[:10]  # 2026-03-10
-    current_time_only = current_time[11:16]  # 14:59
+    current_date = current_time[:10]  # 2026-03-16
+    current_time_only = current_time[11:16]  # 12:14
 
     # 签到状态样式
     if "成功" in sign_status:
@@ -667,113 +667,141 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 margin-left: 2px;
             }}
             
-            /* 内容区域 */
-            .content {{
+            /* ===== 红框区域重新设计 ===== */
+            /* 结果卡片容器 - 两个卡片并排 */
+            .results-container {{
+                display: flex;
+                gap: 12px;
                 padding: 0 20px 20px;
             }}
             
-            /* 签到卡片 */
-            .sign-section {{
+            /* 通用卡片样式 */
+            .result-card {{
+                flex: 1;
+                background: #ffffff;
+                border-radius: 16px;
+                padding: 16px 12px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+                border: 1px solid #f0f2f5;
+                transition: transform 0.2s;
+            }}
+            
+            .result-card:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
+            }}
+            
+            /* 卡片头部 */
+            .card-header {{
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
-                background: #f8fafc;
-                border-radius: 12px;
-                padding: 12px 16px;
+                gap: 6px;
                 margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 1px dashed #e9eef2;
             }}
             
-            .sign-left {{
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }}
-            
-            .sign-icon {{
-                width: 36px;
-                height: 36px;
-                background: {sign_color}10;
-                border-radius: 18px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
+            .card-header-icon {{
                 font-size: 18px;
             }}
             
-            .sign-info {{
-                line-height: 1.4;
-            }}
-            
-            .sign-title {{
+            .card-header-title {{
+                font-size: 13px;
                 font-weight: 600;
-                font-size: 14px;
-                color: {sign_color};
+                color: #64748b;
+                text-transform: uppercase;
+                letter-spacing: 0.3px;
             }}
             
-            .sign-desc {{
+            /* 签到卡片特定样式 */
+            .sign-card {{
+                border-top: 3px solid {sign_color};
+            }}
+            
+            .sign-content {{
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }}
+            
+            .sign-icon-large {{
+                width: 48px;
+                height: 48px;
+                background: {sign_color}10;
+                border-radius: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 28px;
+                margin-bottom: 10px;
+            }}
+            
+            .sign-status-text {{
+                font-size: 16px;
+                font-weight: 600;
+                color: {sign_color};
+                margin-bottom: 4px;
+            }}
+            
+            .sign-detail-text {{
                 font-size: 12px;
                 color: #64748b;
-            }}
-            
-            .sign-badge {{
-                background: {sign_color}10;
-                color: {sign_color};
+                background: #f8fafc;
                 padding: 4px 10px;
                 border-radius: 30px;
-                font-size: 12px;
-                font-weight: 500;
+                width: fit-content;
+                margin: 0 auto;
             }}
             
-            /* 抽奖卡片 */
-            .lottery-section {{
+            /* 抽奖卡片特定样式 */
+            .lottery-card {{
+                border-top: 3px solid {lottery_color};
+            }}
+            
+            .lottery-content {{
                 display: flex;
+                flex-direction: column;
                 align-items: center;
-                justify-content: space-between;
-                background: #f8fafc;
-                border-radius: 12px;
-                padding: 12px 16px;
+                text-align: center;
             }}
             
-            .lottery-left {{
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }}
-            
-            .lottery-icon {{
-                width: 36px;
-                height: 36px;
+            .lottery-icon-large {{
+                width: 48px;
+                height: 48px;
                 background: {lottery_color}10;
-                border-radius: 18px;
+                border-radius: 24px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 18px;
+                font-size: 28px;
+                margin-bottom: 10px;
             }}
             
-            .lottery-info {{
-                line-height: 1.4;
-            }}
-            
-            .lottery-title {{
+            .lottery-prize {{
+                font-size: 16px;
                 font-weight: 600;
-                font-size: 14px;
                 color: {lottery_color};
+                margin-bottom: 4px;
             }}
             
-            .lottery-tag {{
-                font-size: 11px;
-                color: #94a3b8;
-            }}
-            
-            .lottery-badge {{
-                background: {lottery_color}10;
-                color: {lottery_color};
+            .lottery-type {{
+                font-size: 12px;
+                color: #64748b;
+                background: #f8fafc;
                 padding: 4px 10px;
                 border-radius: 30px;
-                font-size: 12px;
-                font-weight: 500;
+                width: fit-content;
+                margin: 0 auto;
             }}
+            
+            /* 数值高亮 */
+            .highlight-number {{
+                font-weight: 700;
+                font-size: 18px;
+                color: {lottery_color};
+            }}
+            /* ========================== */
             
             /* 底部 */
             .footer {{
@@ -796,7 +824,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 <div class="date-row">⏱️ 执行时间：{current_time}</div>
             </div>
             
-            <!-- 统计网格 - 12px圆角卡片 -->
+            <!-- 统计网格 -->
             <div class="stats-grid">
                 <div class="stat-item">
                     <div class="stat-label">📅 连续签到</div>
@@ -816,36 +844,41 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 </div>
             </div>
             
-            <!-- 内容区域 -->
-            <div class="content">
-                <!-- 签到卡片 - 12px圆角 -->
-                <div class="sign-section">
-                    <div class="sign-left">
-                        <div class="sign-icon">{sign_icon}</div>
-                        <div class="sign-info">
-                            <div class="sign-title">{sign_text}</div>
-                            <div class="sign-desc">{sign_detail[:20]}</div>
-                        </div>
+            <!-- ===== 红框区域：签到和抽奖结果卡片（并排） ===== -->
+            <div class="results-container">
+                <!-- 左侧：签到卡片 -->
+                <div class="result-card sign-card">
+                    <div class="card-header">
+                        <span class="card-header-icon">✍️</span>
+                        <span class="card-header-title">今日签到</span>
                     </div>
-                    <span class="sign-badge">{sign_icon} {sign_text}</span>
+                    <div class="sign-content">
+                        <div class="sign-icon-large">{sign_icon}</div>
+                        <div class="sign-status-text">{sign_text}</div>
+                        <div class="sign-detail-text">{sign_detail[:20]}</div>
+                    </div>
                 </div>
                 
-                <!-- 抽奖卡片 - 12px圆角 -->
-                <div class="lottery-section">
-                    <div class="lottery-left">
-                        <div class="lottery-icon">{lottery_icon}</div>
-                        <div class="lottery-info">
-                            <div class="lottery-title">{lottery_display[2:] if lottery_display.startswith(('🎁', '🎲', '🍀', '⏰', '❌')) else lottery_display}</div>
-                            <div class="lottery-tag">{lottery_tag}</div>
-                        </div>
+                <!-- 右侧：抽奖卡片 -->
+                <div class="result-card lottery-card">
+                    <div class="card-header">
+                        <span class="card-header-icon">🎲</span>
+                        <span class="card-header-title">幸运抽奖</span>
                     </div>
-                    <span class="lottery-badge">{lottery_icon} {lottery_tag}</span>
+                    <div class="lottery-content">
+                        <div class="lottery-icon-large">{lottery_icon}</div>
+                        <div class="lottery-prize">
+                            {lottery_display[2:] if lottery_display.startswith(('🎁', '🎲', '🍀', '⏰', '❌')) else lottery_display}
+                        </div>
+                        <div class="lottery-type">{lottery_tag}</div>
+                    </div>
                 </div>
             </div>
+            <!-- ============================================== -->
             
             <!-- 底部 -->
             <div class="footer">
-                ⚡每日自动执行 · 结果实时推送⚡
+                ⚡ 每日自动执行 · 结果实时推送 ⚡
             </div>
         </div>
     </body>
