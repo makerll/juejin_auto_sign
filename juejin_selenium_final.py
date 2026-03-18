@@ -936,55 +936,21 @@ def main():
         # 模拟用户行为
         simulate_user_behavior(driver)
         
-        # ===== 获取签到前统计数据（带重试机制）=====
+        # ===== 获取签到前统计数据 =====
         print("\n📊 ===== 获取当前数据 =====")
         user_stats = get_user_stats(driver)
         print(f"当前统计: {user_stats}")
         
-        # 验证数据是否有效（所有都为0表示数据未加载）
-        retry_count = 0
-        max_retries = 3
-        
-        while (user_stats['连续签到'] == '0' or user_stats['连续签到'] == '未知' or 
-               user_stats['累计签到'] == '0' or user_stats['累计签到'] == '未知' or 
-               user_stats['矿石总数'] == '0') and retry_count < max_retries:
-            
-            retry_count += 1
-            print(f"\n⚠️ 数据异常：统计信息不完整，尝试刷新重试 ({retry_count}/{max_retries})...")
-            
-            # 刷新页面
-            driver.refresh()
-            time.sleep(5)
-            
-            # 再次模拟滚动触发加载
-            for i in range(2):
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(2)
-            
-            # 重新获取数据
-            user_stats = get_user_stats(driver)
-            print(f"重试 {retry_count} 后统计: {user_stats}")
-        
-        # 如果最终还是0，尝试直接访问签到页面
-        if (user_stats['连续签到'] == '0' or user_stats['累计签到'] == '0' or 
-            user_stats['矿石总数'] == '0') and retry_count >= max_retries:
-            print("\n🔄 多次重试失败，直接访问签到页面...")
-            driver.get(SIGNIN_URL)
-            time.sleep(5)
-            
-            # 再次滚动触发加载
-            for i in range(3):
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(2)
-            
-            user_stats = get_user_stats(driver)
-            print(f"最终统计: {user_stats}")
-        # ======================================
+        # 记录签到前的矿石总数
+        try:
+            before_points = int(user_stats['矿石总数']) if user_stats['矿石总数'] not in ['0', '未知'] else 0
+            print(f"💰 签到前矿石总数: {before_points}")
+        except:
+            before_points = 0
+            print("⚠️ 无法解析签到前矿石数")
         
         # 初始化今日获得
         today_ore = 0
-        # 在签到前记录初始矿石数
-        initial_points = int(user_stats['矿石总数']) if user_stats['矿石总数'] != '未知' else 0
         
         # 执行签到
         sign_success, sign_result, sign_button, sign_ore = check_and_click_sign(driver)
@@ -994,20 +960,40 @@ def main():
                 sign_status = "已签到"
                 sign_detail = "今日已完成签到"
             else:
-                # 获取签到后的矿石数（通过重新获取数据）
+                # 签到后立即获取新的统计数据
+                print("\n📊 ===== 获取签到后数据 =====")
                 time.sleep(3)
-                temp_stats = get_user_stats(driver)
-                current_points = int(temp_stats['矿石总数']) if temp_stats['矿石总数'] != '未知' else 0
+                
+                # 滚动触发加载
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2)
+                
+                after_stats = get_user_stats(driver)
+                print(f"签到后统计: {after_stats}")
+                
+                # 获取签到后的矿石总数
+                try:
+                    after_points = int(after_stats['矿石总数']) if after_stats['矿石总数'] not in ['0', '未知'] else 0
+                    print(f"💰 签到后矿石总数: {after_points}")
+                except:
+                    after_points = 0
                 
                 # 通过差值计算签到获得的矿石
-                if initial_points > 0 and current_points > 0:
-                    sign_ore = current_points - initial_points
-                    print(f"📊 通过数据差值计算: 签到获得 {sign_ore} 矿石")
+                if before_points > 0 and after_points > 0:
+                    sign_ore = after_points - before_points
+                    print(f"📊 通过差值计算: 签到获得 {sign_ore} 矿石")
+                else:
+                    print("⚠️ 无法通过差值计算，使用弹窗提取的值")
                 
                 sign_status = "签到成功"
-                sign_detail = sign_result if sign_result != "签到成功" else f"获得 {sign_ore} 矿石"
+                sign_detail = f"获得 {sign_ore} 矿石"
                 today_ore += sign_ore
                 print(f"📝 签到获得 {sign_ore} 矿石")
+                
+                # 更新用户统计为签到后的数据
+                user_stats['连续签到'] = after_stats['连续签到']
+                user_stats['累计签到'] = after_stats['累计签到']
+                user_stats['矿石总数'] = after_stats['矿石总数']
             
             # 执行抽奖
             lottery_info = check_and_click_lottery(driver)
@@ -1021,8 +1007,8 @@ def main():
             user_stats['今日获得'] = str(today_ore)
             print(f"📊 今日共获得 {today_ore} 矿石")
             
-            # 重新获取最新数据
-            print("\n📊 ===== 获取最新统计数据 =====")
+            # 重新获取最终数据
+            print("\n📊 ===== 获取最终统计数据 =====")
             time.sleep(3)
             
             # 返回签到页面
