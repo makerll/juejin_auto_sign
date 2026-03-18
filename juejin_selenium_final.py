@@ -681,7 +681,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 background: #ffffff;
                 border-radius: 16px;
                 padding: 16px 12px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+                box-shadow: 0 4px 12px #ccc;
                 border: 1px solid #f0f2f5;
                 transition: transform 0.2s;
             }}
@@ -714,9 +714,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             }}
             
             /* 签到卡片特定样式 */
-            .sign-card {{
-                border-top: 3px solid {sign_color};
-            }}
+         
             
             .sign-content {{
                 display: flex;
