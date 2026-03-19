@@ -641,10 +641,12 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             }}
             
             .stat-item {{
-                background: #f8fafc;
-                border-radius: 12px;
-                padding: 16px 12px;
-                text-align: center;
+                    border: 1px solid #f0f2f5;
+                    background: #fff;
+                    border-radius: 16px;
+                    padding: 16px 12px;
+                    text-align: center;
+                    box-shadow: 0 4px 12px #ccc;
             }}
             
             .stat-label {{
@@ -690,7 +692,10 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 transform: translateY(-2px);
                 box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
             }}
-            
+            .stat-item:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
+            }}
             /* 卡片头部 */
             .card-header {{
                 display: flex;
