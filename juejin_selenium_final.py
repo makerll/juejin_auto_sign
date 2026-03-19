@@ -688,14 +688,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 transition: transform 0.2s;
             }}
             
-            .result-card:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
-            }}
-            .stat-item:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
-            }}
+          
             /* 卡片头部 */
             .card-header {{
                 display: flex;
