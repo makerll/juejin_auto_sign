@@ -753,9 +753,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             }}
             
             /* 抽奖卡片特定样式 */
-            .lottery-card {{
-                border-top: 3px solid {lottery_color};
-            }}
+         
             
             .lottery-content {{
                 display: flex;
