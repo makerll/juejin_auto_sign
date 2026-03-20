@@ -644,7 +644,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                     border: 1px solid #f0f2f5;
                     background: #fff;
                     border-radius: 16px;
-                    padding: 16px 12px;
+                    padding: 20px 12px;
                     text-align: center;
                     box-shadow: 0 4px 12px #ccc;
             }}
