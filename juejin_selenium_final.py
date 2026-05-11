@@ -198,7 +198,7 @@ def simulate_user_behavior(driver):
         return False
 
 def wait_for_page_load(driver, retry_count=0):
-    """等待页面加载，确保数据出现"""
+    """等待页面加载，确保数据出现 - 等待非0数字出现"""
     print("\n⏳ 等待页面数据加载...")
     
     # 滚动页面触发加载
@@ -207,18 +207,29 @@ def wait_for_page_load(driver, retry_count=0):
         time.sleep(2)
         print(f"  第{i+1}次滚动")
     
-    # 等待关键元素出现
+    # 等待数据出现（连续签到天数不为0）
     try:
-        # 等待连续签到天数出现
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.XPATH, '//*[contains(text(), "连续签到天数")]'))
-        )
-        print("✅ 检测到连续签到天数元素")
+        print("⏳ 等待用户数据加载（等待非0数字出现）...")
+        
+        # 等待连续签到天数出现且不为0
+        def check_data_loaded(driver):
+            try:
+                text = driver.find_element(By.TAG_NAME, 'body').text
+                # 匹配连续签到天数
+                match = re.search(r'(\d+)\s*连续签到天数', text)
+                if match and match.group(1) != '0':
+                    print(f"✅ 数据加载完成，连续签到: {match.group(1)}")
+                    return True
+            except:
+                pass
+            return False
+        
+        # 最多等待30秒
+        WebDriverWait(driver, 30).until(lambda d: check_data_loaded(d))
         
         # 额外等待数据填充
         time.sleep(3)
         
-        # 检查是否有有效数据
         page_text = driver.find_element(By.TAG_NAME, 'body').text
         numbers = re.findall(r'\b\d+\b', page_text)
         valid_numbers = [n for n in numbers if len(n) >= 3 and not (2020 <= int(n) <= 2030)]
@@ -230,7 +241,7 @@ def wait_for_page_load(driver, retry_count=0):
             print("⚠️ 未检测到有效数字")
             
     except TimeoutException:
-        print("⚠️ 等待超时")
+        print("⚠️ 等待超时，数据仍未加载")
     
     # 如果数据仍未加载，刷新页面重试
     if retry_count < 2:
@@ -242,49 +253,51 @@ def wait_for_page_load(driver, retry_count=0):
     return False
 
 def get_user_stats(driver):
-    """从页面获取用户统计信息"""
+    """从页面获取用户统计信息 - 加强数据验证"""
     stats = {'连续签到': '未知', '累计签到': '未知', '矿石总数': '0', '今日获得': '0'}
 
     try:
         # 先等待页面加载
         if not wait_for_page_load(driver):
-            print("⚠️ 页面可能未完全加载")
+            print("⚠️ 页面可能未完全加载或数据为空")
         
         page_text = driver.find_element(By.TAG_NAME, 'body').text
         print("📄 页面文本预览:", page_text[:300].replace('\n', ' '))
         
         # 连续签到
         match = re.search(r'(\d+)\s*(?:天)?\s*连续签到天数', page_text)
-        if not match:
-            match = re.search(r'(\d+)[^\d]*连续', page_text)
         if match:
             stats['连续签到'] = match.group(1)
             print(f"📊 连续签到: {stats['连续签到']}")
-
+        
         # 累计签到
         match = re.search(r'(\d+)\s*(?:天)?\s*累计签到天数', page_text)
-        if not match:
-            match = re.search(r'(\d+)[^\d]*累计', page_text)
         if match:
             stats['累计签到'] = match.group(1)
             print(f"📊 累计签到: {stats['累计签到']}")
 
-        # 矿石总数
-        ore_matches = re.findall(r'(\d{4,7})\s*矿石', page_text)
-        if ore_matches:
-            stats['矿石总数'] = ore_matches[0]
+        # 矿石总数 - 优先使用"当前矿石数"后面的数字
+        ore_match = re.search(r'当前矿石数[^\d]*(\d+)', page_text)
+        if ore_match:
+            stats['矿石总数'] = ore_match.group(1)
             print(f"💰 矿石总数: {stats['矿石总数']}")
         else:
-            all_numbers = re.findall(r'\b(\d{4,7})\b', page_text)
-            valid_ores = [n for n in all_numbers if not (2020 <= int(n) <= 2030)]
-            if valid_ores:
-                stats['矿石总数'] = max(valid_ores, key=int)
-                print(f"💰 矿石总数(推断): {stats['矿石总数']}")
+            # 备用方案
+            ore_matches = re.findall(r'(\d{4,7})\s*矿石', page_text)
+            if ore_matches:
+                stats['矿石总数'] = ore_matches[0]
+                print(f"💰 矿石总数(备选): {stats['矿石总数']}")
+        
+        # 如果数据全是0，说明加载失败
+        if stats['连续签到'] == '0' and stats['累计签到'] == '0' and stats['矿石总数'] == '0':
+            print("⚠️ 警告：所有统计数据均为0，页面可能未正常加载")
+            print("💡 提示：掘金页面数据异步加载失败，可能是网络或反爬问题")
 
     except Exception as e:
         print(f"获取用户统计信息时出错: {e}")
 
     return stats
+    
 def check_and_click_sign(driver):
     """检查并点击签到按钮"""
     print("\n🔍 检查签到状态...")
