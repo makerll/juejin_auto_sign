@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 掘金社区自动签到脚本 - 纯Selenium最终版
-全新邮件设计 + 完善的抽奖处理
+全新邮件设计 + 完善的抽奖处理 + Cookie过期通知
 """
 import os
 import time
@@ -103,38 +103,229 @@ def setup_driver():
     return driver
 
 def parse_cookie_string(cookie_str):
-    """将Cookie字符串解析为Selenium需要的格式"""
+    """将Cookie字符串解析为Selenium需要的格式 - 不设置domain，避免无效domain错误"""
     cookies = []
     for item in cookie_str.split('; '):
         if '=' in item:
             name, value = item.split('=', 1)
+            # 只设置name和value，不设置domain，让浏览器自动处理
             cookies.append({
                 'name': name,
                 'value': value,
-                'domain': '.juejin.cn'
             })
     return cookies
 
 def add_cookies_to_driver(driver, cookie_str):
-    """向浏览器添加Cookie"""
+    """向浏览器添加Cookie - 修复domain问题"""
     print("\n🍪 添加Cookie到浏览器...")
     driver.get(JUEJIN_URL)
     time.sleep(3)
     
     cookies = parse_cookie_string(cookie_str)
     success_count = 0
+    failed_count = 0
     
     for cookie in cookies:
         try:
             driver.add_cookie(cookie)
             success_count += 1
+            print(f"  ✅ 添加cookie: {cookie['name']}")
         except Exception as e:
-            print(f"  添加cookie {cookie['name']} 失败: {e}")
+            failed_count += 1
+            print(f"  ❌ 添加cookie {cookie['name']} 失败: {e}")
     
-    print(f"✅ 成功添加 {success_count}/{len(cookies)} 个cookie")
+    print(f"✅ 成功添加 {success_count}/{len(cookies)} 个cookie，失败 {failed_count} 个")
     driver.refresh()
     time.sleep(3)
     return success_count > 0
+
+def verify_login(driver):
+    """验证是否登录成功"""
+    try:
+        time.sleep(3)
+        page_text = driver.find_element(By.TAG_NAME, 'body').text
+        page_title = driver.title
+        
+        print(f"📄 页面标题: {page_title}")
+        print(f"📄 页面文本预览: {page_text[:200]}")
+        
+        # 检查403错误
+        if '403' in page_text or 'denied' in page_text.lower() or 'forbidden' in page_text.lower():
+            print("❌ 访问被拒绝，Cookie可能已过期")
+            return False, "access_denied"
+        
+        # 检查是否出现登录相关文字
+        if '登录' in page_text and '注册' in page_text:
+            print("❌ Cookie无效，页面显示登录界面")
+            return False, "login_page"
+        
+        # 检查是否有用户标识（根据你的用户名）
+        if '难为清醒' in page_text:
+            print("✅ 登录验证成功")
+            return True, "success"
+        
+        # 检查是否有签到相关元素
+        if '签到' in page_text or '矿石' in page_text:
+            print("✅ 检测到签到相关元素，登录成功")
+            return True, "success"
+        
+        print("⚠️ 无法确定登录状态，假设成功")
+        return True, "assumed_success"
+        
+    except Exception as e:
+        print(f"验证登录状态时出错: {e}")
+        return False, f"verification_error:{str(e)}"
+
+def send_cookie_expired_email():
+    """发送Cookie过期通知邮件"""
+    try:
+        current_time = format_china_time()
+        subject = "⚠️ 掘金签到 Cookie 已过期"
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                * {{
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }}
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+                    background: #f5f7fa;
+                    padding: 20px;
+                }}
+                .container {{
+                    max-width: 500px;
+                    margin: 0 auto;
+                    background: #ffffff;
+                    border-radius: 24px;
+                    box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.1);
+                    overflow: hidden;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, #ef4444, #dc2626);
+                    color: white;
+                    padding: 24px;
+                    text-align: center;
+                }}
+                .header h1 {{
+                    margin: 0;
+                    font-size: 24px;
+                }}
+                .content {{
+                    padding: 24px;
+                }}
+                .warning-icon {{
+                    font-size: 48px;
+                    text-align: center;
+                    margin-bottom: 20px;
+                }}
+                .message {{
+                    background: #fef2f2;
+                    border-left: 4px solid #ef4444;
+                    padding: 16px;
+                    margin-bottom: 20px;
+                    border-radius: 12px;
+                }}
+                .message p {{
+                    margin: 8px 0;
+                    color: #1e293b;
+                }}
+                .steps {{
+                    background: #f8fafc;
+                    border-radius: 12px;
+                    padding: 16px;
+                    margin: 16px 0;
+                }}
+                .steps ol {{
+                    padding-left: 20px;
+                    margin: 8px 0;
+                }}
+                .steps li {{
+                    margin: 8px 0;
+                    color: #475569;
+                }}
+                .code {{
+                    background: #e2e8f0;
+                    padding: 12px;
+                    border-radius: 8px;
+                    font-family: monospace;
+                    font-size: 12px;
+                    word-break: break-all;
+                    margin: 12px 0;
+                }}
+                .time {{
+                    color: #64748b;
+                    font-size: 14px;
+                    text-align: center;
+                    margin-top: 20px;
+                }}
+                .footer {{
+                    background: #f8fafc;
+                    padding: 16px;
+                    text-align: center;
+                    color: #64748b;
+                    font-size: 12px;
+                    border-top: 1px solid #e2e8f0;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>⛏️ 掘金签到</h1>
+                </div>
+                <div class="content">
+                    <div class="warning-icon">⚠️</div>
+                    <div class="message">
+                        <p><strong>Cookie 已过期</strong></p>
+                        <p>自动签到脚本无法登录掘金，因为存储的 Cookie 已经失效。</p>
+                    </div>
+                    
+                    <div class="steps">
+                        <p><strong>📋 如何更新 Cookie：</strong></p>
+                        <ol>
+                            <li>打开浏览器无痕模式访问 <a href="https://juejin.cn/">https://juejin.cn/</a></li>
+                            <li>登录你的掘金账号</li>
+                            <li>按 F12 打开开发者工具 → Network 标签</li>
+                            <li>刷新页面，找到任意请求（如 home 或 get_today_status）</li>
+                            <li>在请求头中找到 <code>cookie:</code> 字段</li>
+                            <li>右键复制完整的 Cookie 值</li>
+                            <li>更新 GitHub Secrets 中的 <code>JUEJIN_COOKIE</code></li>
+                        </ol>
+                    </div>
+                    
+                    <p class="time">⏱️ 检测时间：{current_time}</p>
+                </div>
+                <div class="footer">
+                    <p>🤖 此邮件由自动签到系统发送</p>
+                    <p>请及时更新 Cookie 以恢复自动签到</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_FROM
+        msg['To'] = EMAIL_TO
+        msg['Subject'] = subject
+        msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+        
+        context = ssl.create_default_context()
+        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context, timeout=30)
+        server.login(EMAIL_FROM, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
+        server.quit()
+        print("✅ Cookie过期通知邮件发送成功")
+        return True
+    except Exception as e:
+        print(f"❌ Cookie过期邮件发送失败: {e}")
+        return False
 
 def safe_click(driver, element, description="元素"):
     """安全点击元素"""
@@ -285,6 +476,7 @@ def get_user_stats(driver):
         print(f"获取用户统计信息时出错: {e}")
 
     return stats
+
 def check_and_click_sign(driver):
     """检查并点击签到按钮"""
     print("\n🔍 检查签到状态...")
@@ -520,11 +712,99 @@ def send_email(subject, content, is_html=False):
         print(f"❌ 邮件发送失败: {e}")
         return False
 
-def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
-    """创建HTML邮件内容 - 红框区域重新设计"""
+def create_cookie_expired_html():
+    """创建Cookie过期邮件HTML"""
     current_time = format_china_time()
-    current_date = current_time[:10]  # 2026-03-16
-    current_time_only = current_time[11:16]  # 12:14
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+                background: #f5f7fa;
+                padding: 20px;
+            }}
+            .container {{
+                max-width: 500px;
+                margin: 0 auto;
+                background: #ffffff;
+                border-radius: 24px;
+                box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.1);
+                overflow: hidden;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #ef4444, #dc2626);
+                color: white;
+                padding: 24px;
+                text-align: center;
+            }}
+            .header h1 {{ margin: 0; font-size: 24px; }}
+            .content {{ padding: 24px; }}
+            .warning-icon {{ font-size: 48px; text-align: center; margin-bottom: 20px; }}
+            .message {{
+                background: #fef2f2;
+                border-left: 4px solid #ef4444;
+                padding: 16px;
+                margin-bottom: 20px;
+                border-radius: 12px;
+            }}
+            .steps {{
+                background: #f8fafc;
+                border-radius: 12px;
+                padding: 16px;
+                margin: 16px 0;
+            }}
+            .steps ol {{ padding-left: 20px; margin: 8px 0; }}
+            .steps li {{ margin: 8px 0; color: #475569; }}
+            .time {{ color: #64748b; font-size: 14px; text-align: center; margin-top: 20px; }}
+            .footer {{
+                background: #f8fafc;
+                padding: 16px;
+                text-align: center;
+                color: #64748b;
+                font-size: 12px;
+                border-top: 1px solid #e2e8f0;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header"><h1>⛏️ 掘金签到</h1></div>
+            <div class="content">
+                <div class="warning-icon">⚠️</div>
+                <div class="message">
+                    <p><strong>Cookie 已过期</strong></p>
+                    <p>自动签到脚本无法登录掘金，因为存储的 Cookie 已经失效。</p>
+                </div>
+                <div class="steps">
+                    <p><strong>📋 如何更新 Cookie：</strong></p>
+                    <ol>
+                        <li>打开浏览器无痕模式访问 <a href="https://juejin.cn/">https://juejin.cn/</a></li>
+                        <li>登录你的掘金账号</li>
+                        <li>按 F12 打开开发者工具 → Network 标签</li>
+                        <li>刷新页面，找到任意请求（如 home）</li>
+                        <li>在请求头中找到 <code>cookie:</code> 字段</li>
+                        <li>右键复制完整的 Cookie 值</li>
+                        <li>更新 GitHub Secrets 中的 <code>JUEJIN_COOKIE</code></li>
+                    </ol>
+                </div>
+                <p class="time">⏱️ 检测时间：{current_time}</p>
+            </div>
+            <div class="footer">
+                <p>🤖 此邮件由自动签到系统发送</p>
+                <p>请及时更新 Cookie 以恢复自动签到</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
+    """创建HTML邮件内容"""
+    current_time = format_china_time()
 
     # 签到状态样式
     if "成功" in sign_status:
@@ -543,7 +823,6 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     # 抽奖信息
     lottery_display = lottery_info['display']
     
-    # 根据抽奖类型设置不同的样式和图标
     if lottery_info['type'] == 'ore':
         lottery_icon = "🎁"
         lottery_color = "#8b5cf6"
@@ -573,12 +852,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>掘金签到</title>
         <style>
-            * {{
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }}
-            
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
                 background: #f5f7fa;
@@ -588,7 +862,6 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 justify-content: center;
                 padding: 16px;
             }}
-            
             .card {{
                 max-width: 400px;
                 width: 100%;
@@ -597,87 +870,37 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
                 overflow: hidden;
             }}
-            
-            /* 头部 */
             .header {{
                 padding: 20px 20px 12px;
                 border-bottom: 1px solid #f0f2f5;
             }}
-            
             .title-row {{
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 margin-bottom: 4px;
             }}
-            
-            .title {{
-                font-size: 20px;
-                font-weight: 600;
-                color: #3370ff;
-            }}
-            
-            .time-badge {{
-                color: #3370ff;
-                font-size: 13px;
-                background: #f1f5f9;
-                padding: 4px 10px;
-                border-radius: 12px;
-                font-weight: bold;
-            }}
-            
-            .date-row {{
-                color: #94a3b8;
-                font-size: 12px;
-                margin-top: 10px;
-            }}
-            
-            /* 统计网格 - 2x2 紧凑布局 */
+            .title {{ font-size: 20px; font-weight: 600; color: #3370ff; }}
+            .time-badge {{ color: #3370ff; font-size: 13px; background: #f1f5f9; padding: 4px 10px; border-radius: 12px; font-weight: bold; }}
+            .date-row {{ color: #94a3b8; font-size: 12px; margin-top: 10px; }}
             .stats-grid {{
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 8px;
                 padding: 16px 20px;
             }}
-            
             .stat-item {{
-                    border: 1px solid #f0f2f5;
-                    background: #fff;
-                    border-radius: 16px;
-                    padding: 20px 12px;
-                    text-align: center;
-                    box-shadow: 0 4px 12px #ccc;
+                border: 1px solid #f0f2f5;
+                background: #fff;
+                border-radius: 16px;
+                padding: 20px 12px;
+                text-align: center;
+                box-shadow: 0 4px 12px #ccc;
             }}
-            
-            .stat-label {{
-                font-size: 12px;
-                color: #64748b;
-                margin-bottom: 4px;
-            }}
-            
-            .stat-value {{
-                font-size: 22px;
-                font-weight: 600;
-                color: #0f172a;
-                line-height: 1.2;
-            }}
-            
-            .stat-unit {{
-                font-size: 12px;
-                font-weight: 400;
-                color: #94a3b8;
-                margin-left: 2px;
-            }}
-            
-            /* ===== 红框区域重新设计 ===== */
-            /* 结果卡片容器 - 两个卡片并排 */
-            .results-container {{
-                display: flex;
-                gap: 12px;
-                padding: 0 20px 20px;
-            }}
-            
-            /* 通用卡片样式 */
+            .stat-label {{ font-size: 12px; color: #64748b; margin-bottom: 4px; }}
+            .stat-value {{ font-size: 22px; font-weight: 600; color: #0f172a; line-height: 1.2; }}
+            .stat-unit {{ font-size: 12px; font-weight: 400; color: #94a3b8; margin-left: 2px; }}
+            .results-container {{ display: flex; gap: 12px; padding: 0 20px 20px; }}
             .result-card {{
                 flex: 1;
                 background: #ffffff;
@@ -685,46 +908,14 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 padding: 16px 12px;
                 box-shadow: 0 4px 12px #ccc;
                 border: 1px solid #f0f2f5;
-                transition: transform 0.2s;
             }}
-            
-          
-            /* 卡片头部 */
-            .card-header {{
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                margin-bottom: 12px;
-                padding-bottom: 8px;
-                border-bottom: 1px dashed #e9eef2;
-            }}
-            
-            .card-header-icon {{
-                font-size: 18px;
-            }}
-            
-            .card-header-title {{
-                font-size: 13px;
-                font-weight: 600;
-                color: #64748b;
-                text-transform: uppercase;
-                letter-spacing: 0.3px;
-            }}
-            
-            /* 签到卡片特定样式 */
-         
-            
-            .sign-content {{
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                text-align: center;
-            }}
-            
-            .sign-icon-large {{
+            .card-header {{ display: flex; align-items: center; gap: 6px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #e9eef2; }}
+            .card-header-icon {{ font-size: 18px; }}
+            .card-header-title {{ font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; }}
+            .sign-content, .lottery-content {{ display: flex; flex-direction: column; align-items: center; text-align: center; }}
+            .sign-icon-large, .lottery-icon-large {{
                 width: 48px;
                 height: 48px;
-                background: {sign_color}10;
                 border-radius: 24px;
                 display: flex;
                 align-items: center;
@@ -732,84 +923,17 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 font-size: 28px;
                 margin-bottom: 10px;
             }}
-            
-            .sign-status-text {{
-                font-size: 16px;
-                font-weight: 600;
-                color: {sign_color};
-                margin-bottom: 4px;
-            }}
-            
-            .sign-detail-text {{
-                font-size: 12px;
-                color: #64748b;
-                background: #f8fafc;
-                padding: 4px 10px;
-                border-radius: 30px;
-                width: fit-content;
-                margin: 0 auto;
-            }}
-            
-            /* 抽奖卡片特定样式 */
-         
-            
-            .lottery-content {{
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                text-align: center;
-            }}
-            
-            .lottery-icon-large {{
-                width: 48px;
-                height: 48px;
-                background: {lottery_color}10;
-                border-radius: 24px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 28px;
-                margin-bottom: 10px;
-            }}
-            
-            .lottery-prize {{
-                font-size: 16px;
-                font-weight: 600;
-                color: {lottery_color};
-                margin-bottom: 4px;
-            }}
-            
-            .lottery-type {{
-                font-size: 12px;
-                color: #64748b;
-                background: #f8fafc;
-                padding: 4px 10px;
-                border-radius: 30px;
-                width: fit-content;
-                margin: 0 auto;
-            }}
-            
-            /* 数值高亮 */
-            .highlight-number {{
-                font-weight: 700;
-                font-size: 18px;
-                color: {lottery_color};
-            }}
-            /* ========================== */
-            
-            /* 底部 */
-            .footer {{
-                padding: 16px 20px;
-                text-align: center;
-                border-top: 1px solid #f0f2f5;
-                color: #94a3b8;
-                font-size: 11px;
-            }}
+            .sign-icon-large {{ background: {sign_color}10; }}
+            .lottery-icon-large {{ background: {lottery_color}10; }}
+            .sign-status-text {{ font-size: 16px; font-weight: 600; color: {sign_color}; margin-bottom: 4px; }}
+            .sign-detail-text {{ font-size: 12px; color: #64748b; background: #f8fafc; padding: 4px 10px; border-radius: 30px; width: fit-content; margin: 0 auto; }}
+            .lottery-prize {{ font-size: 16px; font-weight: 600; color: {lottery_color}; margin-bottom: 4px; }}
+            .lottery-type {{ font-size: 12px; color: #64748b; background: #f8fafc; padding: 4px 10px; border-radius: 30px; width: fit-content; margin: 0 auto; }}
+            .footer {{ padding: 16px 20px; text-align: center; border-top: 1px solid #f0f2f5; color: #94a3b8; font-size: 11px; }}
         </style>
     </head>
     <body>
         <div class="card">
-            <!-- 头部 -->
             <div class="header">
                 <div class="title-row">
                     <span class="title">⛏️ 掘金签到</span>
@@ -818,34 +942,16 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 <div class="date-row">⏱️ 执行时间：{current_time}</div>
             </div>
             
-            <!-- 统计网格 -->
             <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-label">📅 连续签到</div>
-                    <div class="stat-value">{user_stats['连续签到']}<span class="stat-unit">天</span></div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">📊 累计签到</div>
-                    <div class="stat-value">{user_stats['累计签到']}<span class="stat-unit">天</span></div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">💎 矿石总数</div>
-                    <div class="stat-value">{user_stats['矿石总数']}<span class="stat-unit">个</span></div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">✨ 今日获得</div>
-                    <div class="stat-value">{user_stats['今日获得']}<span class="stat-unit">矿石</span></div>
-                </div>
+                <div class="stat-item"><div class="stat-label">📅 连续签到</div><div class="stat-value">{user_stats['连续签到']}<span class="stat-unit">天</span></div></div>
+                <div class="stat-item"><div class="stat-label">📊 累计签到</div><div class="stat-value">{user_stats['累计签到']}<span class="stat-unit">天</span></div></div>
+                <div class="stat-item"><div class="stat-label">💎 矿石总数</div><div class="stat-value">{user_stats['矿石总数']}<span class="stat-unit">个</span></div></div>
+                <div class="stat-item"><div class="stat-label">✨ 今日获得</div><div class="stat-value">{user_stats['今日获得']}<span class="stat-unit">矿石</span></div></div>
             </div>
             
-            <!-- ===== 红框区域：签到和抽奖结果卡片（并排） ===== -->
             <div class="results-container">
-                <!-- 左侧：签到卡片 -->
                 <div class="result-card sign-card">
-                    <div class="card-header">
-                        <span class="card-header-icon">✍️</span>
-                        <span class="card-header-title">今日签到</span>
-                    </div>
+                    <div class="card-header"><span class="card-header-icon">✍️</span><span class="card-header-title">今日签到</span></div>
                     <div class="sign-content">
                         <div class="sign-icon-large">{sign_icon}</div>
                         <div class="sign-status-text">{sign_text}</div>
@@ -853,27 +959,17 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                     </div>
                 </div>
                 
-                <!-- 右侧：抽奖卡片 -->
                 <div class="result-card lottery-card">
-                    <div class="card-header">
-                        <span class="card-header-icon">🎲</span>
-                        <span class="card-header-title">幸运抽奖</span>
-                    </div>
+                    <div class="card-header"><span class="card-header-icon">🎲</span><span class="card-header-title">幸运抽奖</span></div>
                     <div class="lottery-content">
                         <div class="lottery-icon-large">{lottery_icon}</div>
-                        <div class="lottery-prize">
-                            {lottery_display[2:] if lottery_display.startswith(('🎁', '🎲', '🍀', '⏰', '❌')) else lottery_display}
-                        </div>
+                        <div class="lottery-prize">{lottery_display[2:] if lottery_display.startswith(('🎁', '🎲', '🍀', '⏰', '❌')) else lottery_display}</div>
                         <div class="lottery-type">{lottery_tag}</div>
                     </div>
                 </div>
             </div>
-            <!-- ============================================== -->
             
-            <!-- 底部 -->
-            <div class="footer">
-                ⚡ 每日自动执行 · 结果实时推送 ⚡
-            </div>
+            <div class="footer">⚡ 每日自动执行 · 结果实时推送 ⚡</div>
         </div>
     </body>
     </html>
@@ -926,6 +1022,17 @@ def main():
         
         # 添加Cookie
         add_cookies_to_driver(driver, COOKIE)
+        
+        # ===== 验证登录状态 =====
+        login_valid, login_status = verify_login(driver)
+        if not login_valid:
+            print(f"❌ 登录验证失败: {login_status}")
+            # 发送Cookie过期通知邮件
+            cookie_expired_html = create_cookie_expired_html()
+            send_email("⚠️ 掘金签到 Cookie 已过期", cookie_expired_html, is_html=True)
+            sign_detail = f"Cookie已过期: {login_status}"
+            raise Exception(f"Cookie invalid: {login_status}")
+        # =======================
         
         # 模拟用户行为
         simulate_user_behavior(driver)
@@ -1009,18 +1116,13 @@ def main():
             driver.quit()
             print("\n🔚 浏览器已关闭")
 
-        # 发送邮件
-        html_content = create_email_html(sign_status, sign_detail, lottery_info, user_stats)
-        send_email("掘金签到通知", html_content, is_html=True)
+        # 发送邮件（只有在Cookie有效的情况下才发送正常邮件，否则已发送Cookie过期通知）
+        if "Cookie" not in sign_detail:
+            html_content = create_email_html(sign_status, sign_detail, lottery_info, user_stats)
+            send_email("掘金签到通知", html_content, is_html=True)
 
         end_time = format_china_time()
         print(f"[{end_time}] 执行完成")
         
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
