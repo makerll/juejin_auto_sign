@@ -132,10 +132,16 @@ def main():
     if pt.get("err_no") == 0 and pt.get("data"):
         lines.append(f"当前矿石: {pt['data']}")
 
+    # 5. 签到天数汇总
+    ct = api_get(f"{BASE}/get_counts", cookie)
+    if ct.get("err_no") == 0 and ct.get("data"):
+        lines.append(f"连续签到: {ct['data'].get('cont_count', '?')} 天")
+        lines.append(f"累计签到: {ct['data'].get('sum_count', '?')} 天")
+
     content = "\n".join(lines)
     print(content)
 
-    # 5. 发送邮件
+    # 6. 发送邮件
     mail_res = send_mail(cfg, f"掘金每日签到抽奖 {now[:10]}", content)
     print(mail_res)
     return 0
