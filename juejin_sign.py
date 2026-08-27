@@ -9,6 +9,7 @@ import smtplib
 import urllib.request
 import urllib.error
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from email.header import Header
 from datetime import datetime
 
@@ -56,7 +57,7 @@ def api_get(url, cookie):
         return {"err_msg": str(e)}
 
 
-def send_mail(cfg, subject, content):
+def send_mail(cfg, subject, text, html=None):
     smtp = cfg.get("smtp") or {}
     host = smtp.get("host") or os.environ.get("SMTP_SERVER", "smtp.163.com")
     port = int(smtp.get("port") or int(os.environ.get("SMTP_PORT", "465")))
@@ -67,7 +68,12 @@ def send_mail(cfg, subject, content):
         return "未配置发件SMTP（缺少SMTP授权码），跳过邮件发送"
     if not to:
         return "未配置收件邮箱（MAIL_TO），跳过邮件发送"
-    msg = MIMEText(content, "plain", "utf-8")
+    if html:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(text, "plain", "utf-8"))
+        msg.attach(MIMEText(html, "html", "utf-8"))
+    else:
+        msg = MIMEText(text, "plain", "utf-8")
     msg["Subject"] = Header(subject, "utf-8")
     msg["From"] = user
     msg["To"] = to
@@ -85,11 +91,47 @@ def send_mail(cfg, subject, content):
         return f"邮件发送失败: {e}"
 
 
+def build_html(r):
+    """清新简约的邮件 HTML 模板（内联样式，兼容主流邮件客户端）。"""
+    signed_str = r.get("signed", "—")
+
+    def row(label, value, color="#1f4438"):
+        return (
+            '<tr>'
+            f'<td style="padding:11px 0;font-size:14px;color:#8aa098;">{label}</td>'
+            f'<td style="padding:11px 0;font-size:14px;font-weight:600;color:{color};text-align:right;">{value}</td>'
+            '</tr>'
+        )
+
+    rows_html = (
+        row("签到状态", signed_str, "#34b98b" if signed_str.startswith("已") else "#e09d3f")
+        + row("免费抽奖", r.get("draw", "—"))
+        + row("当前矿石", r.get("point", "—"))
+        + row("连续签到", r.get("cont", "—"))
+        + row("累计签到", r.get("sum", "—"))
+    )
+    return (
+        '<div style="background-color:#eef2f1;padding:32px 16px;'
+        'font-family:-apple-system,\'Segoe UI\',\'Microsoft YaHei\',\'PingFang SC\',sans-serif;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="max-width:520px;margin:0 auto;">'
+        '<tr><td style="background:#ffffff;border-radius:16px;padding:28px 32px;">'
+        '<p style="margin:0 0 4px;font-size:12px;letter-spacing:3px;color:#a9c0b8;">JUEJIN · CHECK-IN</p>'
+        '<h1 style="margin:0 0 18px;font-size:20px;font-weight:600;color:#1f4438;">掘金每日打卡</h1>'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="border-top:1px solid #f0f3f2;">' + rows_html + '</table>'
+        '<p style="margin:20px 0 0;font-size:12px;color:#b4c0bc;background:#f6f9f8;'
+        'border-radius:8px;padding:10px 14px;">' + str(r.get("date", "")) + '</p>'
+        '</td></tr></table></div>'
+    )
+
+
 def main():
     cfg = load_config()
     cookie = os.environ.get("JUEJIN_COOKIE") or cfg.get("cookie", "")
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [f"掘金自动任务执行时间: {now}", ""]
+    report = {"date": now, "signed": "未知", "draw": "—", "point": "—", "cont": "—", "sum": "—"}
 
     # 1. 检查签到状态
     st = api_get(f"{BASE}/get_today_status", cookie)
@@ -98,7 +140,8 @@ def main():
         print("\n".join(lines))
         return 2
     signed = bool(st.get("data", False))
-    lines.append(f"签到状态: {'今日已签到' if signed else '今日未签到'}")
+    report["signed"] = "已签到" if signed else "未签到"
+    lines.append(f"签到状态: {report['signed']}")
 
     # 2. 执行签到
     if not signed:
@@ -123,26 +166,31 @@ def main():
             lines.append(f"抽奖失败: {dr.get('err_msg')}")
         else:
             d = dr.get("data") or {}
-            lines.append(f"抽奖结果: {d.get('lottery_name', '未知奖品')} (矿{d.get('total_point', '?')} )")
+            report["draw"] = f"{d.get('lottery_name', '未知奖品')} · 矿{d.get('total_point', '?')}"
+            lines.append(f"抽奖结果: {report['draw']}")
     else:
         lines.append("今日免费抽奖次数已用完，跳过")
 
     # 4. 剩余矿石
     pt = api_get(f"{BASE}/get_cur_point", cookie)
     if pt.get("err_no") == 0 and pt.get("data"):
+        report["point"] = f"{pt['data']} 矿石"
         lines.append(f"当前矿石: {pt['data']}")
 
     # 5. 签到天数汇总
     ct = api_get(f"{BASE}/get_counts", cookie)
     if ct.get("err_no") == 0 and ct.get("data"):
-        lines.append(f"连续签到: {ct['data'].get('cont_count', '?')} 天")
-        lines.append(f"累计签到: {ct['data'].get('sum_count', '?')} 天")
+        report["cont"] = f"{ct['data'].get('cont_count', '?')} 天"
+        report["sum"] = f"{ct['data'].get('sum_count', '?')} 天"
+        lines.append(f"连续签到: {report['cont']}")
+        lines.append(f"累计签到: {report['sum']}")
 
     content = "\n".join(lines)
     print(content)
 
     # 6. 发送邮件
-    mail_res = send_mail(cfg, f"掘金每日签到抽奖 {now[:10]}", content)
+    html = build_html(report)
+    mail_res = send_mail(cfg, f"掘金每日打卡 {now[:10]}", content, html)
     print(mail_res)
     return 0
 
