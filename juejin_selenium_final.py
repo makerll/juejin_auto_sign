@@ -700,8 +700,27 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     else:
         sign_text = "签到失败"
 
-    # 状态色
-    status_color = "#22c55e" if not is_failure else "#ef4444"
+    # Semi Design 色板
+    PRIMARY = "#0077FA"
+    SUCCESS = "#00B365"
+    DANGER = "#F93920"
+    WARNING = "#FF7D00"
+    # 中性色
+    TITLE = "#1C1F23"
+    BODY = "#3D4150"
+    SECONDARY = "#8A8F99"
+    PLACEHOLDER = "#A9AEB8"
+    BORDER = "#E5E6EB"
+    DIVIDER = "#F2F3F5"
+    BG = "#F7F8FA"
+
+    # 签到状态
+    if not is_failure:
+        tag_color = SUCCESS
+        tag_bg = "#E8F7EF"
+    else:
+        tag_color = DANGER
+        tag_bg = "#FFF0ED"
 
     # 抽奖显示文本（去掉前缀emoji）
     lottery_display = lottery_info['display']
@@ -711,12 +730,17 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     failure_block = ""
     if is_failure:
         tips = get_failure_tips(sign_detail)
-        tips_html = "".join(f'<div style="margin-top:4px;">- {tip}</div>' for tip in tips)
+        tips_html = "".join(
+            f'<div style="margin-top:6px;padding-left:12px;color:{BODY};font-size:12px;line-height:20px;">- {tip}</div>'
+            for tip in tips
+        )
         failure_block = f"""
         <tr>
-            <td style="padding:16px 24px;border-bottom:1px solid #f0f0f0;background:#fafafa;">
-                <div style="font-size:12px;font-weight:600;color:#c00;margin-bottom:6px;">排查建议</div>
-                <div style="font-size:12px;color:#666;line-height:1.8;">{tips_html}</div>
+            <td style="padding:16px 20px;border-bottom:1px solid {BORDER};">
+                <div style="padding:12px 16px;background:{BG};border-radius:8px;border-left:3px solid {DANGER};">
+                    <div style="font-size:13px;font-weight:600;color:{DANGER};margin-bottom:4px;">排查建议</div>
+                    {tips_html}
+                </div>
             </td>
         </tr>"""
 
@@ -724,75 +748,91 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     <!DOCTYPE html>
     <html>
     <head><meta charset="utf-8"><title>掘金签到</title></head>
-    <body style="margin:0;padding:0;background:#f4f4f4;font-family:'Helvetica Neue',Helvetica,'Microsoft YaHei',Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:24px 0;">
+    <body style="margin:0;padding:0;background:{BG};font-family:'Inter','PingFang SC','Helvetica Neue','Microsoft YaHei',sans-serif;-webkit-font-smoothing:antialiased;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:{BG};padding:32px 16px;">
             <tr><td align="center">
-                <table width="380" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                <table width="400" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid {BORDER};">
 
-                    <!-- 顶部装饰线 -->
-                    <tr><td style="height:3px;background:linear-gradient(90deg, #1e80ff, #46a3ff);"></td></tr>
-
-                    <!-- 标题栏 -->
+                    <!-- 头部 -->
                     <tr>
-                        <td style="padding:20px 24px 16px;">
+                        <td style="padding:20px 20px 16px;">
                             <table width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
-                                    <td style="font-size:16px;font-weight:600;color:#1a1a1a;">掘金签到</td>
-                                    <td align="right" style="font-size:12px;color:#999;">{current_time}</td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-
-                    <!-- 签到状态 -->
-                    <tr>
-                        <td style="padding:16px 24px;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;">
-                            <table width="100%" cellpadding="0" cellspacing="0">
-                                <tr>
-                                    <td style="font-size:13px;color:#666;">签到状态</td>
-                                    <td align="right">
-                                        <span style="display:inline-block;padding:3px 10px;background:{status_color}15;color:{status_color};font-size:12px;font-weight:500;border-radius:12px;">{sign_text}</span>
+                                    <td>
+                                        <div style="font-size:17px;font-weight:600;color:{TITLE};line-height:24px;">掘金签到报告</div>
+                                        <div style="font-size:12px;color:{SECONDARY};margin-top:4px;line-height:18px;">{current_time}</div>
+                                    </td>
+                                    <td align="right" valign="top">
+                                        <span style="display:inline-block;padding:2px 8px;background:{PRIMARY};color:#fff;font-size:11px;font-weight:500;border-radius:4px;line-height:18px;">AUTO</span>
                                     </td>
                                 </tr>
                             </table>
-                            <div style="font-size:12px;color:#999;margin-top:8px;">{sign_detail}</div>
                         </td>
                     </tr>
 
-                    <!-- 幸运抽奖 -->
+                    <!-- 分隔线 -->
+                    <tr><td style="padding:0 20px;"><div style="height:1px;background:{BORDER};"></div></td></tr>
+
+                    <!-- 签到 & 抽奖结果 -->
                     <tr>
-                        <td style="padding:16px 24px;border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:16px 20px;">
                             <table width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
-                                    <td style="font-size:13px;color:#666;">幸运抽奖</td>
-                                    <td align="right" style="font-size:13px;color:#333;font-weight:500;">{lottery_raw}</td>
+                                    <td style="padding:8px 0;">
+                                        <div style="font-size:12px;color:{SECONDARY};line-height:18px;margin-bottom:6px;">签到状态</div>
+                                        <table cellpadding="0" cellspacing="0">
+                                            <tr>
+                                                <td>
+                                                    <span style="display:inline-block;padding:2px 10px;background:{tag_bg};color:{tag_color};font-size:12px;font-weight:500;border-radius:4px;line-height:22px;">{sign_text}</span>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                        <div style="font-size:12px;color:{PLACEHOLDER};margin-top:6px;line-height:18px;">{sign_detail}</div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:8px 0;border-top:1px solid {DIVIDER};">
+                                        <div style="font-size:12px;color:{SECONDARY};line-height:18px;margin-bottom:6px;">幸运抽奖</div>
+                                        <div style="font-size:14px;font-weight:500;color:{TITLE};line-height:22px;">{lottery_raw}</div>
+                                    </td>
                                 </tr>
                             </table>
                         </td>
                     </tr>
+
+                    <!-- 分隔线 -->
+                    <tr><td style="padding:0 20px;"><div style="height:1px;background:{BORDER};"></div></td></tr>
 
                     <!-- 数据概览 -->
                     <tr>
-                        <td style="padding:16px 24px;background:#fafbfc;">
+                        <td style="padding:16px 20px;">
                             <table width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
-                                    <td width="50%" style="padding:8px 12px;background:#fff;border-radius:6px;border:1px solid #f0f0f0;">
-                                        <div style="font-size:11px;color:#999;">连续签到</div>
-                                        <div style="font-size:18px;font-weight:600;color:#1a1a1a;margin-top:4px;">{user_stats['连续签到']} <span style="font-size:11px;font-weight:400;color:#999;">天</span></div>
+                                    <td width="50%" style="padding:4px;">
+                                        <div style="padding:12px;background:{BG};border-radius:8px;">
+                                            <div style="font-size:12px;color:{SECONDARY};line-height:18px;">连续签到</div>
+                                            <div style="font-size:20px;font-weight:600;color:{TITLE};margin-top:4px;line-height:28px;">{user_stats['连续签到']}<span style="font-size:12px;font-weight:400;color:{PLACEHOLDER};margin-left:2px;">天</span></div>
+                                        </div>
                                     </td>
-                                    <td width="50%" style="padding:8px 12px;background:#fff;border-radius:6px;border:1px solid #f0f0f0;">
-                                        <div style="font-size:11px;color:#999;">累计签到</div>
-                                        <div style="font-size:18px;font-weight:600;color:#1a1a1a;margin-top:4px;">{user_stats['累计签到']} <span style="font-size:11px;font-weight:400;color:#999;">天</span></div>
+                                    <td width="50%" style="padding:4px;">
+                                        <div style="padding:12px;background:{BG};border-radius:8px;">
+                                            <div style="font-size:12px;color:{SECONDARY};line-height:18px;">累计签到</div>
+                                            <div style="font-size:20px;font-weight:600;color:{TITLE};margin-top:4px;line-height:28px;">{user_stats['累计签到']}<span style="font-size:12px;font-weight:400;color:{PLACEHOLDER};margin-left:2px;">天</span></div>
+                                        </div>
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td width="50%" style="padding:8px 12px;margin-top:8px;background:#fff;border-radius:6px;border:1px solid #f0f0f0;">
-                                        <div style="font-size:11px;color:#999;">矿石总数</div>
-                                        <div style="font-size:18px;font-weight:600;color:#1a1a1a;margin-top:4px;">{user_stats['矿石总数']}</div>
+                                    <td width="50%" style="padding:4px;">
+                                        <div style="padding:12px;background:{BG};border-radius:8px;">
+                                            <div style="font-size:12px;color:{SECONDARY};line-height:18px;">矿石总数</div>
+                                            <div style="font-size:20px;font-weight:600;color:{TITLE};margin-top:4px;line-height:28px;">{user_stats['矿石总数']}</div>
+                                        </div>
                                     </td>
-                                    <td width="50%" style="padding:8px 12px;margin-top:8px;background:#fff;border-radius:6px;border:1px solid #f0f0f0;">
-                                        <div style="font-size:11px;color:#999;">今日获得</div>
-                                        <div style="font-size:18px;font-weight:600;color:#1e80ff;margin-top:4px;">{user_stats['今日获得']} <span style="font-size:11px;font-weight:400;color:#999;">矿石</span></div>
+                                    <td width="50%" style="padding:4px;">
+                                        <div style="padding:12px;background:{BG};border-radius:8px;">
+                                            <div style="font-size:12px;color:{SECONDARY};line-height:18px;">今日获得</div>
+                                            <div style="font-size:20px;font-weight:600;color:{PRIMARY};margin-top:4px;line-height:28px;">{user_stats['今日获得']}<span style="font-size:12px;font-weight:400;color:{PLACEHOLDER};margin-left:2px;">矿石</span></div>
+                                        </div>
                                     </td>
                                 </tr>
                             </table>
@@ -803,8 +843,8 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
 
                     <!-- 底部 -->
                     <tr>
-                        <td style="padding:16px 24px;text-align:center;border-top:1px solid #f0f0f0;">
-                            <span style="font-size:11px;color:#bbb;">自动签到 · 每日执行</span>
+                        <td style="padding:16px 20px;border-top:1px solid {BORDER};" align="center">
+                            <span style="font-size:12px;color:{PLACEHOLDER};">自动签到 · 每日执行</span>
                         </td>
                     </tr>
 
