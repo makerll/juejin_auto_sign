@@ -285,67 +285,183 @@ def get_user_stats(driver):
         print(f"获取用户统计信息时出错: {e}")
 
     return stats
-def check_and_click_sign(driver):
-    """检查并点击签到按钮"""
-    print("\n🔍 检查签到状态...")
-    
+def verify_login(driver):
+    """验证是否已成功登录"""
+    print("\n🔐 验证登录状态...")
     try:
-        # 检查是否已签到
-        signed_elements = driver.find_elements(By.XPATH, '//*[contains(text(), "今日已签到")]')
-        for element in signed_elements:
-            if element.is_displayed():
-                print("✅ 今日已签到")
-                return True, "已签到", None, 0
-        
-        # 查找签到按钮
-        button_selectors = [
-            '//button[contains(text(), "立即签到")]',
-            '//button[contains(text(), "签到")]',
-            '//div[contains(text(), "立即签到")]',
-            '.signin-btn',
-            '.check-in-btn',
+        # 等待页面加载完成
+        WebDriverWait(driver, 15).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+        time.sleep(2)
+
+        # 检查是否存在用户头像或用户中心入口（已登录标志）
+        logged_in_selectors = [
+            '.user-avatar',
+            '.sidebar-avatar',
+            '[class*="avatar"]',
+            '//a[contains(@href, "/user/")]',
         ]
-        
-        for selector in button_selectors:
+        for selector in logged_in_selectors:
             try:
                 if selector.startswith('//'):
                     elements = driver.find_elements(By.XPATH, selector)
                 else:
                     elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                
-                for element in elements:
-                    if element.is_displayed() and element.is_enabled():
-                        print(f"✅ 找到签到按钮: {element.text}")
-                        
-                        if safe_click(driver, element, "签到按钮"):
-                            print("⏳ 等待签到结果...")
-                            time.sleep(5)
-                            
-                            # 检查弹窗并提取奖励
-                            try:
-                                popup = driver.find_element(By.XPATH, '//*[contains(text(), "签到成功") or contains(text(), "获得")]')
-                                if popup.is_displayed():
-                                    popup_text = popup.text
-                                    print(f"🎉 签到成功弹窗: {popup_text}")
-                                    
-                                    ore_match = re.search(r'(\d+)', popup_text)
-                                    if ore_match:
-                                        ore_count = int(ore_match.group(1))
-                                        reward = f"获得 {ore_count} 矿石"
-                                        return True, reward, element, ore_count
-                            except:
-                                pass
-                            
-                            return True, "签到成功", element, 0
+                for el in elements:
+                    if el.is_displayed():
+                        print("✅ 登录状态验证通过")
+                        return True
             except:
                 continue
-        
-        print("❌ 未找到签到按钮")
-        return False, "未找到签到按钮", None, 0
-        
+
+        # 备选：检查cookie中是否有sessionid
+        cookies = driver.get_cookies()
+        session_cookies = [c for c in cookies if c['name'] in ('sessionid', 'sessionid_ss', 'passport_csrf_token')]
+        if session_cookies:
+            print("✅ 检测到有效session cookie")
+            return True
+
+        print("❌ 登录状态验证失败，可能cookie已失效")
+        return False
     except Exception as e:
-        print(f"❌ 检查签到状态时出错: {e}")
-        return False, f"错误: {str(e)}", None, 0
+        print(f"❌ 验证登录状态时出错: {e}")
+        return False
+
+def dismiss_popups(driver):
+    """关闭可能的弹窗/遮罩层"""
+    print("\n🔕 检查并关闭弹窗...")
+    dismiss_selectors = [
+        '//div[contains(@class, "close")]',
+        '//button[contains(@class, "close")]',
+        '//div[contains(@class, "modal")]//button',
+        '//span[contains(@class, "close")]',
+        '.dy-dialog-close',
+        '.close-btn',
+    ]
+    dismissed = 0
+    for selector in dismiss_selectors:
+        try:
+            if selector.startswith('//'):
+                elements = driver.find_elements(By.XPATH, selector)
+            else:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            for el in elements:
+                if el.is_displayed():
+                    el.click()
+                    dismissed += 1
+                    time.sleep(0.5)
+        except:
+            continue
+    if dismissed:
+        print(f"✅ 关闭了 {dismissed} 个弹窗")
+    else:
+        print("✅ 无弹窗")
+    time.sleep(1)
+
+def find_sign_button(driver):
+    """查找签到按钮，使用WebDriverWait等待"""
+    button_selectors = [
+        (By.XPATH, '//button[contains(text(), "立即签到")]'),
+        (By.XPATH, '//button[contains(text(), "签到")]'),
+        (By.XPATH, '//div[contains(text(), "立即签到")]'),
+        (By.CSS_SELECTOR, '.signin-btn'),
+        (By.CSS_SELECTOR, '.check-in-btn'),
+    ]
+
+    for by, selector in button_selectors:
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((by, selector))
+            )
+            elements = driver.find_elements(by, selector)
+            for element in elements:
+                if element.is_displayed() and element.is_enabled():
+                    print(f"✅ 找到签到按钮: {element.text}")
+                    return element
+        except TimeoutException:
+            continue
+        except Exception:
+            continue
+    return None
+
+def check_and_click_sign(driver):
+    """检查并点击签到按钮（含重试机制）"""
+    print("\n🔍 检查签到状态...")
+
+    max_retries = 3
+
+    for attempt in range(1, max_retries + 1):
+        print(f"\n🔄 签到尝试 ({attempt}/{max_retries})...")
+
+        try:
+            # 先关闭可能的弹窗
+            dismiss_popups(driver)
+
+            # 检查是否已签到
+            signed_elements = driver.find_elements(By.XPATH, '//*[contains(text(), "今日已签到")]')
+            for element in signed_elements:
+                if element.is_displayed():
+                    print("✅ 今日已签到")
+                    return True, "已签到", None, 0
+
+            # 等待并查找签到按钮
+            sign_button = find_sign_button(driver)
+            if sign_button is None:
+                print(f"⚠️ 第{attempt}次未找到签到按钮")
+                if attempt < max_retries:
+                    driver.refresh()
+                    time.sleep(5)
+                    continue
+                return False, "未找到签到按钮", None, 0
+
+            # 点击签到
+            if safe_click(driver, sign_button, "签到按钮"):
+                print("⏳ 等待签到结果...")
+                time.sleep(5)
+
+                # 检查是否变成"已签到"状态（更可靠的判断）
+                time.sleep(2)
+                signed_after = driver.find_elements(By.XPATH, '//*[contains(text(), "今日已签到")]')
+                for el in signed_after:
+                    if el.is_displayed():
+                        print("✅ 签到成功（状态已变更为已签到）")
+                        return True, "签到成功", sign_button, 0
+
+                # 检查弹窗并提取奖励
+                try:
+                    popup = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located(
+                            (By.XPATH, '//*[contains(text(), "签到成功") or contains(text(), "获得")]')
+                        )
+                    )
+                    if popup.is_displayed():
+                        popup_text = popup.text
+                        print(f"🎉 签到成功弹窗: {popup_text}")
+                        ore_match = re.search(r'(\d+)', popup_text)
+                        if ore_match:
+                            ore_count = int(ore_match.group(1))
+                            reward = f"获得 {ore_count} 矿石"
+                            return True, reward, sign_button, ore_count
+                except:
+                    pass
+
+                # 点击成功但未检测到明确结果，视为成功
+                return True, "签到成功", sign_button, 0
+            else:
+                print(f"⚠️ 第{attempt}次点击签到按钮失败")
+                if attempt < max_retries:
+                    driver.refresh()
+                    time.sleep(5)
+
+        except Exception as e:
+            print(f"⚠️ 第{attempt}次签到出错: {e}")
+            if attempt < max_retries:
+                driver.refresh()
+                time.sleep(5)
+
+    print("❌ 签到失败，已达最大重试次数")
+    return False, "未找到签到按钮", None, 0
 
 def check_and_click_lottery(driver):
     """检查并点击抽奖，返回奖品信息"""
@@ -492,39 +608,72 @@ def check_and_click_lottery(driver):
             'display': '❌ 抽奖失败'
         }
 
-def send_email(subject, content, is_html=False):
-    """发送邮件通知"""
-    try:
-        if not all([EMAIL_FROM, EMAIL_PASSWORD, SMTP_SERVER]):
-            print("邮件配置不完整，跳过邮件发送")
-            return False
-
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_FROM
-        msg['To'] = EMAIL_TO
-        msg['Subject'] = subject
-
-        if is_html:
-            msg.attach(MIMEText(content, 'html', 'utf-8'))
-        else:
-            msg.attach(MIMEText(content, 'plain', 'utf-8'))
-
-        context = ssl.create_default_context()
-        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context, timeout=30)
-        server.login(EMAIL_FROM, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
-        server.quit()
-        print(f"✅ 邮件发送成功")
-        return True
-    except Exception as e:
-        print(f"❌ 邮件发送失败: {e}")
+def send_email(subject, content, is_html=False, max_retries=3):
+    """发送邮件通知（含重试机制）"""
+    if not all([EMAIL_FROM, EMAIL_PASSWORD, SMTP_SERVER]):
+        print("邮件配置不完整，跳过邮件发送")
         return False
 
+    for attempt in range(1, max_retries + 1):
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = EMAIL_FROM
+            msg['To'] = EMAIL_TO
+            msg['Subject'] = subject
+
+            if is_html:
+                msg.attach(MIMEText(content, 'html', 'utf-8'))
+            else:
+                msg.attach(MIMEText(content, 'plain', 'utf-8'))
+
+            context = ssl.create_default_context()
+            server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context, timeout=30)
+            server.login(EMAIL_FROM, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
+            server.quit()
+            print(f"✅ 邮件发送成功")
+            return True
+        except Exception as e:
+            print(f"❌ 邮件发送失败 (第{attempt}/{max_retries}次): {e}")
+            if attempt < max_retries:
+                wait = attempt * 5
+                print(f"⏳ {wait}秒后重试...")
+                time.sleep(wait)
+
+    print("❌ 邮件发送最终失败，已达最大重试次数")
+    return False
+
+def get_failure_tips(sign_detail):
+    """根据失败原因生成排查建议"""
+    tips = []
+    detail_lower = sign_detail.lower() if sign_detail else ""
+
+    if "cookie" in detail_lower or "登录" in detail_lower or "login" in detail_lower:
+        tips.append("Cookie 可能已过期，请重新登录掘金获取最新 Cookie")
+        tips.append("检查 Cookie 是否包含 sessionid 和 sessionid_ss 字段")
+    elif "按钮" in detail_lower or "元素" in detail_lower:
+        tips.append("掘金页面结构可能已更新，请检查签到按钮选择器")
+        tips.append("网络延迟导致页面未完全加载，可稍后重试")
+    elif "超时" in detail_lower or "timeout" in detail_lower:
+        tips.append("网络连接不稳定，请检查服务器网络状况")
+        tips.append("掘金服务器可能暂时不可用")
+    elif "异常" in detail_lower or "error" in detail_lower or "错误" in detail_lower:
+        tips.append("脚本运行出现异常，请检查日志排查具体原因")
+        tips.append("可能是 Chrome 浏览器或 ChromeDriver 版本不匹配")
+    else:
+        tips.append("请检查服务器网络连接是否正常")
+        tips.append("确认掘金 Cookie 是否仍然有效")
+
+    tips.append("如问题持续，请手动登录掘金确认账号状态")
+    return tips
+
 def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
-    """创建HTML邮件内容 - 红框区域重新设计"""
+    """创建HTML邮件内容"""
     current_time = format_china_time()
-    current_date = current_time[:10]  # 2026-03-16
-    current_time_only = current_time[11:16]  # 12:14
+    current_date = current_time[:10]
+    current_time_only = current_time[11:16]
+
+    is_failure = "失败" in sign_status or "异常" in sign_status
 
     # 签到状态样式
     if "成功" in sign_status:
@@ -536,15 +685,20 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
         sign_color = "#10b981"
         sign_text = "已签到"
     else:
-        sign_icon = "⚠️"
+        sign_icon = "❌"
         sign_color = "#ef4444"
-        sign_text = "签到异常"
+        sign_text = "签到失败"
 
     # 抽奖信息
     lottery_display = lottery_info['display']
-    
+
+    # 签到失败时，抽奖显示为未执行
+    if is_failure and lottery_info.get('name') == '未执行':
+        lottery_icon = "⏸️"
+        lottery_color = "#94a3b8"
+        lottery_tag = "未执行"
     # 根据抽奖类型设置不同的样式和图标
-    if lottery_info['type'] == 'ore':
+    elif lottery_info['type'] == 'ore':
         lottery_icon = "🎁"
         lottery_color = "#8b5cf6"
         lottery_tag = "矿石奖励"
@@ -565,6 +719,28 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
         lottery_color = "#94a3b8"
         lottery_tag = "抽奖完成"
 
+    # 失败时的排查建议
+    failure_section = ""
+    if is_failure:
+        tips = get_failure_tips(sign_detail)
+        tips_html = "".join(f"<li>{tip}</li>" for tip in tips)
+        failure_section = f"""
+            <div style="margin: 0 20px 16px; padding: 14px 16px; background: #fef2f2; border-radius: 12px; border: 1px solid #fecaca;">
+                <div style="font-size: 13px; font-weight: 600; color: #dc2626; margin-bottom: 8px;">🔧 排查建议</div>
+                <ul style="font-size: 12px; color: #7f1d1d; line-height: 1.8; padding-left: 16px; margin: 0;">
+                    {tips_html}
+                </ul>
+            </div>
+        """
+
+    # 失败时头部和标题样式
+    header_bg = "#fef2f2" if is_failure else "#ffffff"
+    title_color = "#ef4444" if is_failure else "#3370ff"
+    badge_color = "#ef4444" if is_failure else "#3370ff"
+    badge_bg = "#fef2f2" if is_failure else "#f1f5f9"
+    title_text = "⛏️ 掘金签到" if not is_failure else "⚠️ 掘金签到异常"
+    badge_text = "失败" if is_failure else "Selenium"
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -578,7 +754,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 padding: 0;
                 box-sizing: border-box;
             }}
-            
+
             body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
                 background: #f5f7fa;
@@ -588,7 +764,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 justify-content: center;
                 padding: 16px;
             }}
-            
+
             .card {{
                 max-width: 400px;
                 width: 100%;
@@ -597,30 +773,31 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                 box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
                 overflow: hidden;
             }}
-            
+
             /* 头部 */
             .header {{
                 padding: 20px 20px 12px;
                 border-bottom: 1px solid #f0f2f5;
+                background: {header_bg};
             }}
-            
+
             .title-row {{
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 margin-bottom: 4px;
             }}
-            
+
             .title {{
                 font-size: 20px;
                 font-weight: 600;
-                color: #3370ff;
+                color: {title_color};
             }}
-            
+
             .time-badge {{
-                color: #3370ff;
+                color: {badge_color};
                 font-size: 13px;
-                background: #f1f5f9;
+                background: {badge_bg};
                 padding: 4px 10px;
                 border-radius: 12px;
                 font-weight: bold;
@@ -812,8 +989,8 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
             <!-- 头部 -->
             <div class="header">
                 <div class="title-row">
-                    <span class="title">⛏️ 掘金签到</span>
-                    <span class="time-badge">Selenium</span>
+                    <span class="title">{title_text}</span>
+                    <span class="time-badge">{badge_text}</span>
                 </div>
                 <div class="date-row">⏱️ 执行时间：{current_time}</div>
             </div>
@@ -862,14 +1039,16 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                     <div class="lottery-content">
                         <div class="lottery-icon-large">{lottery_icon}</div>
                         <div class="lottery-prize">
-                            {lottery_display[2:] if lottery_display.startswith(('🎁', '🎲', '🍀', '⏰', '❌')) else lottery_display}
+                            {lottery_display[2:] if lottery_display.startswith(('🎁', '🎲', '🍀', '⏰', '❌', '⏸️')) else lottery_display}
                         </div>
                         <div class="lottery-type">{lottery_tag}</div>
                     </div>
                 </div>
             </div>
             <!-- ============================================== -->
-            
+
+            {failure_section}
+
             <!-- 底部 -->
             <div class="footer">
                 ⚡ 每日自动执行 · 结果实时推送 ⚡
@@ -926,7 +1105,15 @@ def main():
         
         # 添加Cookie
         add_cookies_to_driver(driver, COOKIE)
-        
+
+        # 验证登录状态
+        if not verify_login(driver):
+            print("❌ 登录验证失败，尝试继续执行...")
+            sign_status = "签到失败"
+            sign_detail = "登录验证失败，cookie可能已失效"
+            # 不直接return，仍尝试继续，因为验证可能误判
+            # 但如果真的未登录，后续签到也会失败并被重试机制捕获
+
         # 模拟用户行为
         simulate_user_behavior(driver)
         
@@ -1002,6 +1189,7 @@ def main():
     except Exception as e:
         error_msg = str(e)
         print(f"❌ 执行过程中出现异常: {error_msg}")
+        sign_status = "签到失败"
         sign_detail = f"异常: {error_msg[:100]}"
         
     finally:
@@ -1009,9 +1197,16 @@ def main():
             driver.quit()
             print("\n🔚 浏览器已关闭")
 
-        # 发送邮件
+        # 发送邮件（标题根据签到结果动态变化）
         html_content = create_email_html(sign_status, sign_detail, lottery_info, user_stats)
-        send_email("掘金签到通知", html_content, is_html=True)
+        current_date = format_china_time()[:10]
+        if "成功" in sign_status:
+            email_subject = f"✅ 掘金签到成功 ({current_date})"
+        elif "已签到" in sign_status:
+            email_subject = f"✅ 掘金已签到 ({current_date})"
+        else:
+            email_subject = f"❌ 掘金签到失败 ({current_date})"
+        send_email(email_subject, html_content, is_html=True)
 
         end_time = format_china_time()
         print(f"[{end_time}] 执行完成")
