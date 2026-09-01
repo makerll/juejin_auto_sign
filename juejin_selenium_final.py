@@ -759,7 +759,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     <body style="margin:0;padding:40px 16px;background:#f5f5f5;font-family:'PingFang SC','Microsoft YaHei',sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0">
             <tr><td align="center">
-                <table width="400" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:20px;overflow:hidden;border:1px solid {BORDER};">
+                <table width="400" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:4px;overflow:hidden;border:1px solid {BORDER};">
 
                     <!-- 标题栏 -->
                     <tr>
