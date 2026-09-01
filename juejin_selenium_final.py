@@ -771,7 +771,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
                                         <div style="font-size:12px;color:{TEXT_SUB};margin-top:4px;">{current_time}</div>
                                     </td>
                                     <td align="right" valign="middle">
-                                        <span style="font-size:12px;color:{status_text};background:{status_bg};border:3px solid {status_border};padding:4px 10px;border-radius:4px;font-weight: bold;">{sign_text}</span>
+                                        <span style="font-size:12px;color:{status_text};background:{status_bg};border:3px solid {status_text};padding:4px 10px;border-radius:4px;font-weight: bold;">{sign_text}</span>
                                     </td>
                                 </tr>
                             </table>
@@ -780,7 +780,7 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
 
                     <!-- 数据区 -->
                     <tr>
-                        <td style="padding:20px 24px;">
+                        <td style="padding:35px 24px;">
                             <table width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
                                     <td width="50%" style="padding-bottom:16px;">
