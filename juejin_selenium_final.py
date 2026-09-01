@@ -687,8 +687,8 @@ def get_failure_tips(sign_detail):
 
 
 def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
-    """创建HTML邮件内容 - 清新淡雅风"""
-    current_time = format_china_time()
+    """创建HTML邮件内容 - 朴素实用风"""
+    current_time = format_china_time()[:16]
 
     is_failure = "失败" in sign_status or "异常" in sign_status
 
@@ -700,23 +700,27 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     else:
         sign_text = "签到失败"
 
-    # 清新淡雅配色
-    BG_COLOR = "#f4f6f5"        # 页面底色：极浅灰绿
-    CARD_BG = "#ffffff"         # 卡片：纯白
-    TEXT_MAIN = "#37423d"       # 主文字：深灰绿
-    TEXT_SUB = "#7d8b84"        # 次要文字
-    TEXT_MUTED = "#a8b3ad"      # 弱化文字
-    LINE = "#e8edeb"            # 分隔线
-    SUCCESS_BG = "#e9f6f0"
-    SUCCESS_TEXT = "#3d9c72"
-    FAIL_BG = "#fdf0f0"
-    FAIL_TEXT = "#cf6b6b"
-    ACCENT = "#5f9d84"          # 点缀：柔和草木绿
+    # 配色
+    TEXT_MAIN = "#333"
+    TEXT_SUB = "#999"
+    TEXT_MUTED = "#ccc"
+    LINE = "#f5f5f5"
+    BORDER = "#e0e0e0"
+    ACCENT = "#fa8c16"
+    SUCCESS_TEXT = "#52c41a"
+    SUCCESS_BG = "#f6ffed"
+    SUCCESS_BORDER = "#b7eb8f"
+    FAIL_TEXT = "#ff4d4f"
+    FAIL_BG = "#fff2f0"
+    FAIL_BORDER = "#ffccc7"
 
     if not is_failure:
-        status_bg, status_text = SUCCESS_BG, SUCCESS_TEXT
+        status_bg, status_text, status_border = SUCCESS_BG, SUCCESS_TEXT, SUCCESS_BORDER
     else:
-        status_bg, status_text = FAIL_BG, FAIL_TEXT
+        status_bg, status_text, status_border = FAIL_BG, FAIL_TEXT, FAIL_BORDER
+
+    # 数据颜色（失败时灰色）
+    data_color = TEXT_MAIN if not is_failure else TEXT_MUTED
 
     # 抽奖显示文本（去掉前缀emoji）
     lottery_display = lottery_info['display']
@@ -727,14 +731,22 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     if is_failure:
         tips = get_failure_tips(sign_detail)
         tips_html = "".join(
-            f'<div style="margin-top:8px;padding-left:14px;color:{TEXT_SUB};font-size:13px;line-height:24px;">{tip}</div>'
+            f'<div style="padding-left:8px;font-size:12px;color:#666;line-height:22px;">· {tip}</div>'
             for tip in tips
         )
         failure_block = f"""
         <tr>
-            <td style="padding:16px 32px 4px;">
-                <div style="background:{FAIL_BG};border-radius:10px;padding:16px 18px;border:1px solid #f5dcdc;">
-                    <div style="font-size:14px;font-weight:600;color:{FAIL_TEXT};margin-bottom:4px;">排查建议</div>
+            <td style="padding:0 24px 16px;">
+                <div style="background:{FAIL_BG};border:1px solid {FAIL_BORDER};border-radius:2px;padding:12px;">
+                    <div style="font-size:12px;font-weight:600;color:{FAIL_TEXT};margin-bottom:4px;">失败原因</div>
+                    <div style="font-size:12px;color:#666;line-height:20px;">{sign_detail}</div>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:0 24px 16px;">
+                <div style="font-size:12px;color:#666;line-height:22px;">
+                    <div style="font-weight:600;color:{TEXT_MAIN};margin-bottom:4px;">排查建议：</div>
                     {tips_html}
                 </div>
             </td>
@@ -743,92 +755,63 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
     html = f"""
     <!DOCTYPE html>
     <html>
-    <head><meta charset="utf-8"><title>掘金签到</title></head>
-    <body style="margin:0;padding:0;background:{BG_COLOR};font-family:'PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:{BG_COLOR};padding:36px 16px;">
+    <head><meta charset="utf-8"><title>掘金签到通知</title></head>
+    <body style="margin:0;padding:40px 16px;background:#f5f5f5;font-family:'PingFang SC','Microsoft YaHei',sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0">
             <tr><td align="center">
-                <table width="460" cellpadding="0" cellspacing="0" style="background:{CARD_BG};border-radius:14px;overflow:hidden;border:1px solid {LINE};box-shadow:0 4px 24px rgba(90,110,100,0.06);">
+                <table width="400" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:4px;overflow:hidden;border:1px solid {BORDER};">
 
-                    <!-- 顶部 -->
+                    <!-- 标题栏 -->
                     <tr>
-                        <td style="padding:30px 32px 4px;">
-                            <div style="font-size:20px;font-weight:600;color:{TEXT_MAIN};">掘金签到</div>
-                            <div style="font-size:13px;color:{TEXT_SUB};margin-top:6px;">{current_time}</div>
-                        </td>
-                    </tr>
-
-                    <!-- 签到状态 -->
-                    <tr>
-                        <td style="padding:22px 32px 6px;">
-                            <span style="display:inline-block;padding:5px 14px;background:{status_bg};color:{status_text};border-radius:16px;font-size:13px;font-weight:500;">{sign_text}</span>
-                            <div style="font-size:14px;color:{TEXT_SUB};margin-top:10px;line-height:22px;">{sign_detail}</div>
-                        </td>
-                    </tr>
-
-                    <!-- 分隔线 -->
-                    <tr><td style="padding:14px 32px 0;"><div style="height:1px;background:{LINE};"></div></td></tr>
-
-                    <!-- 数据列表 -->
-                    <tr>
-                        <td style="padding:18px 32px 0;">
+                        <td style="padding:20px 24px 16px;border-bottom:1px solid #eee;">
                             <table width="100%" cellpadding="0" cellspacing="0">
-
                                 <tr>
-                                    <td style="padding:13px 2px;border-bottom:1px solid {LINE};">
-                                        <table width="100%" cellpadding="0" cellspacing="0">
-                                            <tr>
-                                                <td style="font-size:14px;color:{TEXT_SUB};">连续签到</td>
-                                                <td align="right" style="font-size:14px;color:{TEXT_MAIN};font-weight:500;">{user_stats['连续签到']} <span style="color:{TEXT_MUTED};font-weight:400;">天</span></td>
-                                            </tr>
-                                        </table>
+                                    <td>
+                                        <div style="font-size:16px;font-weight:600;color:{TEXT_MAIN};">掘金签到通知</div>
+                                        <div style="font-size:12px;color:{TEXT_SUB};margin-top:4px;">{current_time}</div>
+                                    </td>
+                                    <td align="right" valign="middle">
+                                        <span style="font-size:12px;color:{status_text};background:{status_bg};border:1px solid {status_border};padding:2px 8px;border-radius:2px;">{sign_text}</span>
                                     </td>
                                 </tr>
-
-                                <tr>
-                                    <td style="padding:13px 2px;border-bottom:1px solid {LINE};">
-                                        <table width="100%" cellpadding="0" cellspacing="0">
-                                            <tr>
-                                                <td style="font-size:14px;color:{TEXT_SUB};">累计签到</td>
-                                                <td align="right" style="font-size:14px;color:{TEXT_MAIN};font-weight:500;">{user_stats['累计签到']} <span style="color:{TEXT_MUTED};font-weight:400;">天</span></td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-
-                                <tr>
-                                    <td style="padding:13px 2px;border-bottom:1px solid {LINE};">
-                                        <table width="100%" cellpadding="0" cellspacing="0">
-                                            <tr>
-                                                <td style="font-size:14px;color:{TEXT_SUB};">矿石总数</td>
-                                                <td align="right" style="font-size:14px;color:{TEXT_MAIN};font-weight:500;">{user_stats['矿石总数']} <span style="color:{TEXT_MUTED};font-weight:400;">矿石</span></td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-
-                                <tr>
-                                    <td style="padding:13px 2px;border-bottom:1px solid {LINE};">
-                                        <table width="100%" cellpadding="0" cellspacing="0">
-                                            <tr>
-                                                <td style="font-size:14px;color:{TEXT_SUB};">今日获得</td>
-                                                <td align="right" style="font-size:14px;color:{ACCENT};font-weight:600;">+{user_stats['今日获得']} <span style="color:{TEXT_MUTED};font-weight:400;">矿石</span></td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-
-                                <tr>
-                                    <td style="padding:13px 2px;">
-                                        <table width="100%" cellpadding="0" cellspacing="0">
-                                            <tr>
-                                                <td style="font-size:14px;color:{TEXT_SUB};">今日抽奖</td>
-                                                <td align="right" style="font-size:14px;color:{TEXT_MAIN};font-weight:500;">{lottery_raw}</td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-
                             </table>
+                        </td>
+                    </tr>
+
+                    <!-- 数据区 -->
+                    <tr>
+                        <td style="padding:20px 24px;">
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td width="50%" style="padding-bottom:16px;">
+                                        <div style="font-size:12px;color:{TEXT_SUB};">连续签到</div>
+                                        <div style="font-size:20px;font-weight:600;color:{data_color};margin-top:4px;">{user_stats['连续签到']} <span style="font-size:12px;color:{TEXT_SUB};font-weight:400;">天</span></div>
+                                    </td>
+                                    <td width="50%" style="padding-bottom:16px;">
+                                        <div style="font-size:12px;color:{TEXT_SUB};">累计签到</div>
+                                        <div style="font-size:20px;font-weight:600;color:{data_color};margin-top:4px;">{user_stats['累计签到']} <span style="font-size:12px;color:{TEXT_SUB};font-weight:400;">天</span></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding-bottom:16px;border-top:1px solid {LINE};padding-top:16px;">
+                                        <div style="font-size:12px;color:{TEXT_SUB};">矿石总数</div>
+                                        <div style="font-size:20px;font-weight:600;color:{data_color};margin-top:4px;">{user_stats['矿石总数']}</div>
+                                    </td>
+                                    <td style="padding-bottom:16px;border-top:1px solid {LINE};padding-top:16px;">
+                                        <div style="font-size:12px;color:{TEXT_SUB};">今日获得</div>
+                                        <div style="font-size:20px;font-weight:600;color:{ACCENT};margin-top:4px;">+{user_stats['今日获得']}</div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- 抽奖 -->
+                    <tr>
+                        <td style="padding:0 24px 16px;">
+                            <div style="font-size:12px;color:{TEXT_SUB};border-top:1px solid {LINE};padding-top:12px;">
+                                今日抽奖：<span style="color:{ACCENT};font-weight:600;">{lottery_raw}</span>
+                            </div>
                         </td>
                     </tr>
 
@@ -836,8 +819,8 @@ def create_email_html(sign_status, sign_detail, lottery_info, user_stats):
 
                     <!-- 底部 -->
                     <tr>
-                        <td style="padding:20px 32px 26px;border-top:1px solid {LINE};" align="center">
-                            <span style="font-size:12px;color:{TEXT_MUTED};">本邮件由掘金签到脚本自动发送</span>
+                        <td style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;" align="center">
+                            <span style="font-size:11px;color:#bbb;">掘金签到脚本</span>
                         </td>
                     </tr>
 
@@ -1005,6 +988,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 
