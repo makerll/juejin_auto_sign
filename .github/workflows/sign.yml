@@ -7,7 +7,8 @@ on:
 
 jobs:
   sign:
-    runs-on: ubuntu-latest
+    # 建议暂时固定到 24.04，避免 ubuntu-latest 自动迁移到 26.04 带来的不确定性
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,24 +16,24 @@ jobs:
     
     steps:
     - name: 检出代码
-      uses: actions/checkout@v3
+      uses: actions/checkout@v7
       with:
         ref: 'master'
     
     - name: 设置Python环境
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v7
       with:
         python-version: '3.10'
     
     - name: 安装Chrome和ChromeDriver
       run: |
-        # 安装Chrome
-        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        # 1. 用新版密钥方式安装 Chrome（适配 Ubuntu 24.04+）
+        wget -qO- https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg
+        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] https://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        # 安装webdriver-manager
+        # 2. 安装 webdriver-manager
         pip install webdriver-manager
     
     - name: 安装Python依赖
